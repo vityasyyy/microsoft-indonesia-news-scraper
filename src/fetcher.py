@@ -7,7 +7,7 @@ LOCALES = [("id", "ID", "ID:id"), ("en-US", "US", "US:en")]
 
 def _get(url, timeout=20):
     import urllib.request
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (skripsi-research)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (news-corpus-research)"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         body = r.read().decode("utf-8", errors="replace")
     class R:

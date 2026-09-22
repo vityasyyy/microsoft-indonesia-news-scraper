@@ -1,7 +1,7 @@
 [project]
-name = "skripsi-jeha"
+name = "microsoft-indonesia-news-scraper"
 version = "0.1.0"
-description = "Scrape 2025 Microsoft Indonesia news to xlsx for thesis corpus"
+description = "Scrape 2025 Microsoft Indonesia news to a deduplicated, translated xlsx corpus"
 requires-python = ">=3.11"
 dependencies = [
   "feedparser>=6.0.11",

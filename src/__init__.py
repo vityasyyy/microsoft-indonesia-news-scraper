@@ -1,1 +1,1 @@
-"""skripsi-jeha pipeline."""
+"""microsoft-indonesia-news-scraper pipeline."""

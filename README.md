@@ -1,4 +1,4 @@
-# Skripsi Jeha — Microsoft Indonesia 2025 News Corpus
+# Microsoft Indonesia 2025 — News Article Scraper
 
 For everyone (no coding needed): this project collects news articles about Microsoft in Indonesia from 2025 into one Excel file.
 
@@ -12,8 +12,8 @@ For everyone (no coding needed): this project collects news articles about Micro
 ## What's inside the Excel
 No (number), Publisher, Title_ID (Indonesian title), Title_Original, URL, Date, Keyword_Found, Snippet, Source_Lang.
 
-## For thesis citation
-See `docs/methodology-note.md` — copy the 1-page method paragraph into your appendix.
+## For research citation
+See `docs/methodology-note.md` — a 1-page method note you can quote in a paper appendix.
 
 ## Re-run it yourself (optional)
 Install `uv`, then `uv sync && uv run python src/scrape.py`. Output goes to `output/`.
