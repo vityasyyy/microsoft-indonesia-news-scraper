@@ -29,19 +29,15 @@ def test_true_english_text_stays_english():
     assert out[0]["Source_Lang"] == "en"
     assert out[0]["Title_ID"] == "TERJEMAHAN"
 
-def test_translate_retries_transient_throttle():
-    from deep_translator.exceptions import TooManyRequests
+def test_translate_retries_transient_backend_error():
     calls = {"n": 0}
-    class FakeTranslator:
-        def __init__(self, *a, **k): pass
+    class FakeTranslation:
         def translate(self, text):
             calls["n"] += 1
-            if calls["n"] == 1:
-                raise TooManyRequests()
             return "Hasil terjemahan"
-    with patch("deep_translator.GoogleTranslator", FakeTranslator):
+    with patch("src.translator._get_translation", side_effect=[RuntimeError("backend busy"), FakeTranslation()]):
         with patch("time.sleep", return_value=None):
             out, ok = translator.translate_en_to_id("Some english headline here")
     assert ok is True
     assert out == "Hasil terjemahan"
-    assert calls["n"] == 2
+    assert calls["n"] == 1

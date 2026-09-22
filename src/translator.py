@@ -26,18 +26,40 @@ def detect_lang(text):
     except LangDetectException:
         return "unknown"
 
-def translate_en_to_id(text, attempts=4):
+_EN_ID = None
+
+def _get_translation():
+    """Cached offline EN->ID translation (Argos). Installs the model on first use."""
+    global _EN_ID
+    if _EN_ID is None:
+        from argostranslate import package as _pkg
+        from argostranslate import translate as _tr
+        try:
+            langs = {l.code: l for l in _tr.get_installed_languages()}
+            _EN_ID = langs["en"].get_translation(langs["id"])
+        except Exception:
+            _pkg.update_package_index()
+            avail = _pkg.get_available_packages()
+            cand = [p for p in avail if p.from_code == "en" and p.to_code == "id"]
+            if not cand:
+                raise RuntimeError("no offline en->id model available")
+            best = sorted(cand, key=lambda p: p.package_version)[-1]
+            _pkg.install_from_path(best.download())
+            langs = {l.code: l for l in _tr.get_installed_languages()}
+            _EN_ID = langs["en"].get_translation(langs["id"])
+    return _EN_ID
+
+def translate_en_to_id(text, attempts=3):
     t = (text or "").strip()
     if not t:
         return "", True
-    from deep_translator import GoogleTranslator
     for i in range(attempts):
         try:
-            time.sleep(0.5)  # stay under the free-tier rate limit
-            out = GoogleTranslator(source="en", target="id").translate(t)
+            out = _get_translation().translate(t)
             return (out or t), True
         except Exception:
-            time.sleep(2 ** i)  # backoff 1s, 2s, 4s on throttle
+            if i < attempts - 1:
+                time.sleep(2 ** i)  # backoff 1s, 2s on transient backend errors
     return t, False
 
 def enrich(rows):
@@ -45,16 +67,17 @@ def enrich(rows):
     translated = 0
     failed = 0
     for r in rows:
-        lang = detect_lang(r.get("title", "") + " " + r.get("snippet", ""))
+        snippet_clean = clean_text(r.get("snippet", ""))
+        lang = detect_lang(r.get("title", "") + " " + snippet_clean)
         if lang not in ("id", "en"):
             lang = "id" if r.get("locale", "").startswith("id") else lang
         nr = dict(r)
         nr["Title_Original"] = r.get("title", "")
-        nr["Snippet_Original"] = clean_text(r.get("snippet", ""))
+        nr["Snippet_Original"] = snippet_clean
         nr["Source_Lang"] = lang if lang in ("id", "en") else "unknown"
         if lang == "en":
             ti, ok1 = translate_en_to_id(r.get("title", ""))
-            si, ok2 = translate_en_to_id(r.get("snippet", ""))
+            si, ok2 = translate_en_to_id(snippet_clean)
             nr["Title_ID"] = ti
             nr["Snippet_ID"] = si
             nr["translation_ok"] = bool(ok1 and ok2)
