@@ -16,8 +16,8 @@ No (number), Publisher, Title_ID (Indonesian title), Title_Original, URL, Date, 
 See `docs/methodology-note.md` — a 1-page method note you can quote in a paper appendix.
 
 ## Re-run it yourself (optional)
-Install `uv`, then `uv sync && uv run python src/scrape.py`. Output goes to `output/`.
+Install `uv`, then `uv sync && uv run python -m src.scrape`. Output goes to `output/`.
 
 ## For developers
-- Set up the environment and run the pipeline: `uv sync && uv run python src/scrape.py`. Output goes to `output/` (`articles-2025.xlsx` + `run-meta.json`).
+- Set up the environment and run the pipeline: `uv sync && uv run python -m src.scrape`. Output goes to `output/` (`articles-2025.xlsx` + `run-meta.json`).
 - Run the tests: `uv run pytest -q`.
