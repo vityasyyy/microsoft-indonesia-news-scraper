@@ -1,0 +1,25 @@
+name: scrape
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 1 * * 1"
+permissions:
+  contents: write
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - run: uv run pytest -q
+      - run: uv run python src/scrape.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: articles-2025
+          path: output/
+      - name: Release xlsx
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: articles-2025-${{ github.run_number }}
+          files: output/articles-2025.xlsx
