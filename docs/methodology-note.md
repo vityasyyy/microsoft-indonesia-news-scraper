@@ -16,10 +16,10 @@ Only articles dated `2025-01-01` to `2025-12-31` inclusive were kept. Items with
 URLs were normalized (lowercased host, tracking params stripped, trailing slash removed; Google News links kept as-is). The first-seen article was kept; repeats found under other keywords were recorded in `Also_Found_In` instead of creating new rows.
 
 ## Translation rule
-Article language was detected (Indonesian or English). English titles and snippets were translated to Indonesian (EN→ID via GoogleTranslator); the original English text was always preserved alongside the translation. Indonesian articles were kept as-is.
+Article language was detected (Indonesian or English) on HTML-cleaned text — RSS snippets arrive as link markup, which is stripped before detection and storage. English titles and snippets were translated to Indonesian (offline Argos Translate EN→ID model, no API keys or quotas); the original English text was always preserved alongside the translation. Indonesian articles were kept as-is. Translation runs fully offline after a one-time model download (~100 MB).
 
 ## Output columns
 `No | Publisher | Title_ID | Title_Original | URL | Date | Keyword_Found | Also_Found_In | Snippet_ID | Snippet_Original | Source_Lang | translation_ok`
 
 ## Reproducibility
-Each run writes `output/run-meta.json` with the run date (`run_utc`), keywords, and fetch/filter/translation counts. Cite the run with the git commit SHA plus `run_utc` from that file. (Run date: fill in after first real run.)
+Each run writes `output/run-meta.json` with the run date (`run_utc`), keywords, and fetch/filter/translation counts. Cite the run with the git commit SHA plus `run_utc` from that file. (First verified run: commit `7a7a1b3`, release `articles-2025-4`, 2026-09-22 — 180 rows, 99 publishers, all `translation_ok=True`.)
