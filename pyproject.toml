@@ -9,6 +9,10 @@ dependencies = [
   "openpyxl>=3.1.5",
   "langdetect>=1.0.9",
   "argostranslate>=1.11",
+  "trafilatura>=2.0.0",
+  "readability-lxml>=0.8.1",
+  "python-docx>=1.1.2",
+  "lxml>=5.0.0",
 ]
 
 [dependency-groups]
