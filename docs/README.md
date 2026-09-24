@@ -11,6 +11,7 @@ How docs work in this repo (for everyone, including non-technical readers):
 - [Article Scrape Pipeline — Design Spec (completed)](completed/2026-09-22-article-scrape-pipeline-design.md) — what we are building, why, and how (Phase 1 xlsx + Phase 2 docx preview). Approved 2026-09-22.
 - [Article Scrape Pipeline — Implementation Plan (completed)](completed/2026-09-22-article-scrape-pipeline.md) — step-by-step build plan (Tasks 1–9). Executed 2026-09-22: CI green, release `articles-2025-4` (180 rows, 99 publishers).
 - [Methodology Note](methodology-note.md) — 1-page research appendix: sources, keywords, 2025 filter, dedupe, translation, reproducibility.
+- [DOCX Corpus Pipeline — Design Spec (active)](active/2026-09-24-docx-corpus-pipeline-design.md) — full-text Indonesian docx corpus for NVivo (moves to completed/ when built).
 
 ## Lifecycle
 

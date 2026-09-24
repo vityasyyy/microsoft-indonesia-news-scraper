@@ -27,6 +27,8 @@ flowchart LR
     L -->|English| T["Translate to Indonesian\noffline, no quotas"]
     T --> X
     X --> E["articles-2025.xlsx\n+ run-meta.json"]
+    E --> C["corpus/*.docx\nIndonesian full text"]
+    C --> R
     E --> R["GitHub Release\nfree download"]
 ```
 
@@ -66,6 +68,12 @@ Copy the citable 1-page version from [`docs/methodology-note.md`](docs/methodolo
 | Snippet_Original | Original short description |
 | Source_Lang | Detected language (`id` / `en`) |
 | translation_ok | `True` if the Indonesian text is complete |
+
+## Phase 2: docx corpus (for NVivo)
+
+- Build locally: `make corpus` (reads `output/articles-2025.xlsx`, writes `corpus/NNN_publisher_slug.docx` + `failed.csv` + `corpus-meta.json`). Fast check: `make corpus-test LIMIT=5`. Zip for sending: `make corpus-zip`.
+- Via CI: Actions → `scrape` → `Run workflow` attaches `corpus-articles-2025.zip` to the same Release as the xlsx.
+- Coverage is honest: paywalled/bot-blocked/removed links land in `failed.csv` with reasons — report the ok-rate in your thesis.
 
 ## Latest verified corpus
 

@@ -16,12 +16,25 @@ jobs:
       - run: uv sync
       - run: uv run pytest -q
       - run: uv run python -m src.scrape
+      - name: Restore Argos model cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/argos-translate
+          key: argos-model-en-id-1.9
+      - run: make corpus
+      - run: ./scripts/zip_corpus.sh
       - uses: actions/upload-artifact@v4
         with:
           name: articles-2025
           path: output/
-      - name: Release xlsx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corpus-2025
+          path: corpus/
+      - name: Release xlsx + corpus
         uses: softprops/action-gh-release@v2
         with:
           tag_name: articles-2025-${{ github.run_number }}
-          files: output/articles-2025.xlsx
+          files: |
+            output/articles-2025.xlsx
+            corpus-articles-2025.zip
