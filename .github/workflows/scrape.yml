@@ -1,8 +1,13 @@
 name: scrape
+# WHEN THIS RUNS (explicit — change with care):
+# 1. Manual: Actions tab -> "scrape" -> "Run workflow" (anytime, any reason).
+# 2. Weekly: every Monday 01:00 UTC (= 08:00 WIB) via cron below.
+# NOT on push/PR: scraping on every code change would spam Releases and
+# hammer Google News RSS rate limits. Docs-only changes never trigger a run.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch: {} # manual button
   schedule:
-    - cron: "0 1 * * 1"
+    - cron: "0 1 * * 1" # Mondays 01:00 UTC / 08:00 WIB
 permissions:
   contents: write
 jobs:

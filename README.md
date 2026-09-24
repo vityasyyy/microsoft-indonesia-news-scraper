@@ -10,6 +10,12 @@
 4. Open it in Excel or Google Sheets.
 5. Done — see "What's inside the Excel" below to read it.
 
+## When does scraping run?
+
+- **Automatically, once a week** — every Monday at 08:00 WIB (01:00 UTC). Each run publishes a new dated Release.
+- **Manually, anytime** — repo page → `Actions` → `scrape` → `Run workflow` → `Run workflow`. Use this after changing keywords or code, or when you need a fresh corpus now.
+- **Never on code changes** — pushing commits or opening pull requests does *not* trigger a scrape. This is deliberate: every run hits Google News and mints a Release, so runs happen on schedule or on demand, not per commit.
+
 ## How it works
 
 ```mermaid
