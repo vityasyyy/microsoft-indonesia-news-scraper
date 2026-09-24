@@ -12,9 +12,8 @@
 
 ## When does scraping run?
 
-- **Automatically, once a week** — every Monday at 08:00 WIB (01:00 UTC). Each run publishes a new dated Release.
-- **Manually, anytime** — repo page → `Actions` → `scrape` → `Run workflow` → `Run workflow`. Use this after changing keywords or code, or when you need a fresh corpus now.
-- **Never on code changes** — pushing commits or opening pull requests does *not* trigger a scrape. This is deliberate: every run hits Google News and mints a Release, so runs happen on schedule or on demand, not per commit.
+- **Manually, whenever needed** — repo page → `Actions` → `scrape` → `Run workflow` → `Run workflow`. Each run publishes a new dated Release.
+- **Never automatically** — no schedule, and pushing commits or opening pull requests does *not* trigger a scrape. This is deliberate: every run hits Google News and mints a Release, so runs happen on demand, not per commit.
 
 ## How it works
 
