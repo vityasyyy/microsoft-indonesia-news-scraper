@@ -1,6 +1,6 @@
 # Microsoft Indonesia 2025 — News Article Scraper
 
-**In plain language:** this project collects news articles about Microsoft in Indonesia published in 2025 and puts them into one Excel file — deduplicated, with English articles translated to Indonesian. It re-runs automatically and every run publishes a downloadable Excel file. No coding is needed to get the data.
+**In plain language:** this project collects news articles about Microsoft in Indonesia published in 2025 and puts them into one Excel file — deduplicated, with English articles translated to Indonesian. It runs whenever you press the button, and every run publishes downloadable files. No coding is needed to get the data.
 
 ## Download the Excel (no coding)
 
@@ -82,6 +82,6 @@ Release [`articles-2025-4`](../../releases/tag/articles-2025-4): **180 rows, 99 
 ## For developers
 
 - Set up and run: `uv sync && uv run python -m src.scrape` → `output/` (`articles-2025.xlsx` + `run-meta.json`).
-- Tests: `uv run pytest -q` (8 tests).
-- Re-run in CI: Actions → `scrape` → `Run workflow` (manual) — runs weekly automatically.
+- Tests: `uv run pytest -q` (16 tests).
+- Re-run in CI: Actions → `scrape` → `Run workflow` (manual only — no schedule).
 - Docs map: [`docs/README.md`](docs/README.md). Full plan/design history lives in `docs/completed/`.
