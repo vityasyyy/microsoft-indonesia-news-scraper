@@ -62,6 +62,37 @@ def translate_en_to_id(text, attempts=3):
                 time.sleep(2 ** i)  # backoff 1s, 2s on transient backend errors
     return t, False
 
+CHUNK_CHARS = 1200
+
+def split_chunks(text, size=CHUNK_CHARS):
+    """Split long bodies on paragraph boundaries so inference stays fast."""
+    parts, cur = [], ""
+    for para in (text or "").split("\n"):
+        para = para.strip()
+        if not para:
+            continue
+        if cur and len(cur) + len(para) + 1 > size:
+            parts.append(cur)
+            cur = para
+        else:
+            cur = (cur + "\n" + para).strip()
+    if cur:
+        parts.append(cur)
+    return parts or [text.strip()]
+
+def translate_long_en_to_id(text):
+    """Translate a full article body chunk-wise; all-or-nothing (never partial)."""
+    t = (text or "").strip()
+    if not t:
+        return "", True
+    outs = []
+    for chunk in split_chunks(t):
+        out, ok = translate_en_to_id(chunk)
+        if not ok:
+            return t, False
+        outs.append(out)
+    return "\n\n".join(outs), True
+
 def enrich(rows):
     out = []
     translated = 0

@@ -11,7 +11,7 @@ def test_process_row_ok_path_translates_en(tmp_path):
     row = {"No": 7, "Publisher": "DCD", "Title": "Cloud region launched in Indonesia", "URL": "https://x.com/7", "Date": "2025-06-01", "Keyword_Found": "k3"}
     with patch("src.make_corpus.downloader.fetch", return_value={"ok": True, "text": "Microsoft launched its first cloud region in Indonesia", "reason": "", "stage": "trafilatura"}):
         with patch("src.make_corpus.translator.detect_lang", return_value="en"):
-            with patch("src.make_corpus.translator.translate_en_to_id", return_value=("TERJEMAHAN", True)):
+            with patch("src.make_corpus.translator.translate_long_en_to_id", return_value=("TERJEMAHAN", True)):
                 res = make_corpus.process_row(row, str(tmp_path))
     assert res["status"] == "ok"
     assert res["file"].startswith("007_")

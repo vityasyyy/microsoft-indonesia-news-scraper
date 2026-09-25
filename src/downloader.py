@@ -15,6 +15,28 @@ TAG_RE = re.compile(r"<[^>]+>")
 def _get(url, timeout=TIMEOUT_S):
     return requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
 
+def _decode(url):
+    """Resolve a Google News redirect link to the publisher article URL."""
+    from googlenewsdecoder import gnewsdecoder
+    res = gnewsdecoder(url, interval=1)
+    if isinstance(res, dict) and res.get("success") and res.get("decoded_url"):
+        return res["decoded_url"]
+    raise RuntimeError(f"could not decode {url}")
+
+def resolve(url):
+    """Google News RSS links redirect to interstitial pages; resolve them first."""
+    import urllib.parse
+    try:
+        host = (urllib.parse.urlparse(url or "").hostname or "").lower()
+    except Exception:
+        return url
+    if host == "news.google.com":
+        try:
+            return _decode(url)
+        except Exception:
+            return url
+    return url
+
 def _clean(text):
     t = TAG_RE.sub(" ", text or "")
     return re.sub(r"\s+", " ", t).strip()
@@ -24,11 +46,12 @@ def _paywalled(html):
     return any(m in low for m in PAYWALL_MARKERS)
 
 def fetch(url):
+    target = resolve(url)
     html = ""
     for _ in range(2):
         try:
             time.sleep(DELAY_S)
-            r = _get(url)
+            r = _get(target)
             if r.status_code in (401, 403):
                 return {"ok": False, "text": "", "reason": "blocked", "stage": "fetch"}
             if r.status_code == 404:

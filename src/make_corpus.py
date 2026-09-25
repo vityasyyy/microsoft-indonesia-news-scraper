@@ -45,7 +45,7 @@ def process_row(row, outdir):
         return {"status": "failed", "No": n, "URL": row["URL"], "Publisher": row["Publisher"], "Keyword_Found": row["Keyword_Found"], "reason": got["reason"], "stage": got["stage"]}
     lang = translator.detect_lang((row["Title"] or "") + " " + (got["text"] or ""))
     if lang == "en":
-        body, ok = translator.translate_en_to_id(got["text"])
+        body, ok = translator.translate_long_en_to_id(got["text"])
         if not ok:
             return {"status": "failed", "No": n, "URL": row["URL"], "Publisher": row["Publisher"], "Keyword_Found": row["Keyword_Found"], "reason": "translate_failed", "stage": "translate"}
     else:
@@ -66,9 +66,13 @@ def main():
     if LIMIT > 0:
         rows = rows[:LIMIT]
     results = []
+    total = len(rows)
     with ThreadPoolExecutor(max_workers=downloader.MAX_WORKERS) as pool:
         for res in pool.map(lambda r: process_row(r, str(outdir)), rows):
             results.append(res)
+            done = len(results)
+            if done % 10 == 0 or done == total:
+                print(f"[{done}/{total}] ok={sum(1 for r in results if r['status'] == 'ok')} failed={sum(1 for r in results if r['status'] != 'ok')}", flush=True)
     ok = [r for r in results if r["status"] == "ok"]
     failed = [r for r in results if r["status"] != "ok"]
     with open(outdir / "failed.csv", "w", newline="", encoding="utf-8") as f:

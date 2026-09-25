@@ -41,3 +41,25 @@ def test_translate_retries_transient_backend_error():
     assert ok is True
     assert out == "Hasil terjemahan"
     assert calls["n"] == 1
+
+def test_translate_long_splits_chunks_and_joins():
+    calls = []
+    def fake(text):
+        calls.append(text)
+        return ("ID:" + text[:20], True)
+    long_text = ("First paragraph about cloud regions. " * 30 + "\n\n" + "Second paragraph about AI talent. " * 30).strip()
+    assert len(long_text) > 1200
+    with patch("src.translator.translate_en_to_id", side_effect=fake):
+        out, ok = translator.translate_long_en_to_id(long_text)
+    assert ok is True
+    assert len(calls) >= 2
+    assert all(len(c) <= 1300 for c in calls)
+    assert out.count("ID:") >= 2
+
+def test_translate_long_all_or_nothing():
+    para = "English sentence here. " * 40
+    long_text = (para + "\n\n" + para).strip()
+    with patch("src.translator.translate_en_to_id", side_effect=[("x", True), ("y", False)]):
+        out, ok = translator.translate_long_en_to_id(long_text)
+    assert ok is False
+    assert out == long_text
