@@ -3,15 +3,16 @@
 How docs work in this repo (for everyone, including non-technical readers):
 
 - `docs/active/` — docs for work currently in progress (draft designs, plans being built).
-- `docs/completed/` — finished, reviewed docs (approved designs, methodology notes).
+- `docs/completed/` — finished or superseded docs (approved designs, methodology notes, historical plans).
 - This `README.md` — the map to everything.
 
 ## Current docs
 
-- [Article Scrape Pipeline — Design Spec (completed)](completed/2026-09-22-article-scrape-pipeline-design.md) — what we are building, why, and how (Phase 1 xlsx + Phase 2 docx preview). Approved 2026-09-22.
-- [Article Scrape Pipeline — Implementation Plan (completed)](completed/2026-09-22-article-scrape-pipeline.md) — step-by-step build plan (Tasks 1–9). Executed 2026-09-22: CI green, release `articles-2025-4` (180 rows, 99 publishers).
-- [Methodology Note](methodology-note.md) — 1-page research appendix: sources, keywords, 2025 filter, dedupe, translation, reproducibility.
-- [DOCX Corpus Pipeline — Design Spec (active)](active/2026-09-24-docx-corpus-pipeline-design.md) — full-text Indonesian docx corpus for NVivo (moves to completed/ when built).
+- [Article Scrape Pipeline — Design Spec (completed)](completed/2026-09-22-article-scrape-pipeline-design.md) — Phase 1 xlsx inventory design. Historical: describes the original translation-era schema; the current schema and rules are in the README and methodology note.
+- [Article Scrape Pipeline — Implementation Plan (completed)](completed/2026-09-22-article-scrape-pipeline.md) — step-by-step build plan for Phase 1 (historical).
+- [Methodology Note](methodology-note.md) — citable research appendix: sources, 15 queries, 2025 filter, relevance gate, dedupe, language labeling (no translation), corpus method, reproducibility.
+- [DOCX Corpus Pipeline — Design Spec (completed, superseded)](completed/2026-09-24-docx-corpus-pipeline-design.md) — Phase 2 design. Machine translation was removed on 2026-11-11; see the superseded note in the file.
+- [DOCX Corpus Pipeline — Implementation Plan (completed)](completed/2026-09-24-docx-corpus-pipeline.md) — historical execution plan for Phase 2.
 
 ## Lifecycle
 
