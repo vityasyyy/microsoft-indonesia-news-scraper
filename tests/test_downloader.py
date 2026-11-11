@@ -12,6 +12,7 @@ class Response:
         self.status_code = status
         self.encoding = "utf-8"
         self._payload = payload if payload is not None else html.encode("utf-8")
+        self.closed = False
 
     def iter_content(self, chunk_size=65536):
         yield self._payload
@@ -19,6 +20,9 @@ class Response:
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    def close(self):
+        self.closed = True
 
 
 def test_fetch_ok_via_trafilatura_sets_resolved_url():
@@ -127,3 +131,30 @@ def test_http_status_reasons(status, reason):
         result = downloader.fetch("https://example.com/x")
     assert result["ok"] is False
     assert result["reason"] == reason
+
+
+@pytest.mark.parametrize("status", [200, 401, 404])
+def test_fetch_closes_streaming_response(status):
+    response = Response(status=status)
+    with patch("src.downloader._get", return_value=response):
+        downloader.fetch("https://example.com/x")
+    assert response.closed is True
+
+
+def test_fetch_closes_streaming_response_when_reading_fails():
+    created = []
+
+    class Broken(Response):
+        def iter_content(self, chunk_size=65536):
+            raise RuntimeError("stream broke")
+
+    def make_response(_url):
+        response = Broken()
+        created.append(response)
+        return response
+
+    with patch("src.downloader._get", side_effect=make_response):
+        with patch("src.downloader.time.sleep"):
+            result = downloader.fetch("https://example.com/broken")
+    assert result["reason"] == "fetch_error"
+    assert created and all(response.closed for response in created)

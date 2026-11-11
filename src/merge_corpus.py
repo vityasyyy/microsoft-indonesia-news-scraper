@@ -45,7 +45,9 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         loaded.append((batch_dir, meta))
     if not loaded:
         raise MergeError("no batch directories given")
-    hashes = {meta.get("input_sha256") for _, meta in loaded}
+    hashes = {meta.get("input_sha256") or "" for _, meta in loaded}
+    if "" in hashes:
+        raise MergeError("batch input_sha256 is empty; rebuild the batch")
     if len(hashes) != 1:
         raise MergeError("batch input_sha256 mismatch; batches used different xlsx inputs")
     count = expected_batches or loaded[0][1].get("batch_count") or len(loaded)
@@ -61,18 +63,30 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
     results = []
     failed_rows = []
     by_reason = {}
+    ok_files = []
     for batch_dir, meta in loaded:
-        for docx in batch_dir.glob("*.docx"):
-            shutil.copy2(docx, out / docx.name)
         for result in meta.get("results", []):
             results.append(result)
-            if result.get("status") != "ok":
+            if result.get("status") == "ok":
+                name = result.get("file")
+                if not name:
+                    raise MergeError(f"{batch_dir}: ok result {result.get('No')} has no docx file")
+                if not (batch_dir / name).is_file():
+                    raise MergeError(f"{batch_dir}: missing docx {name}")
+                ok_files.append(name)
+            else:
                 reason = result.get("reason") or "internal_error"
                 by_reason[reason] = by_reason.get(reason, 0) + 1
+        for docx in batch_dir.glob("*.docx"):
+            shutil.copy2(docx, out / docx.name)
         failed_csv = batch_dir / "failed.csv"
         if failed_csv.exists():
             with open(failed_csv, newline="", encoding="utf-8") as handle:
                 failed_rows.extend(list(csv.DictReader(handle)))
+
+    for name in ok_files:
+        if not (out / name).is_file():
+            raise MergeError(f"copied docx missing: {name}")
 
     with open(out / "failed.csv", "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=FAILED_COLUMNS)

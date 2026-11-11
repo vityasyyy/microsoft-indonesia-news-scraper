@@ -53,6 +53,7 @@ def read_rows(xlsx):
                 "URL": (cells[index["URL"]] or "").strip(),
                 "Date": str(cells[index["Date"]] or ""),
                 "Keyword_Found": cells[index["Keyword_Found"]] or "",
+                "Source_Lang": cells[index["Source_Lang"]] or "",
             }
         )
     return [row for row in rows if row["URL"]]
@@ -109,6 +110,21 @@ def clear_stale_docx(outdir):
         path.unlink()
 
 
+def row_language(title, body, source_lang=""):
+    """Prefer confident id/en detection; xlsx Source_Lang is the last fallback."""
+    title_lang = language.detect_lang(title)
+    body_lang = language.detect_lang(f"{title} {body[:2000]}")
+    if "id" in (title_lang, body_lang):
+        return "id"
+    if "en" in (title_lang, body_lang):
+        return "en"
+    if source_lang in ("id", "en"):
+        return source_lang
+    if source_lang not in ("", "unknown"):
+        return "other"
+    return "unknown"
+
+
 def process_row(row, outdir, accessed=None):
     number = int(row["No"])
     publisher_slug = slugify(row["Publisher"], "unknown")
@@ -129,7 +145,7 @@ def process_row(row, outdir, accessed=None):
         }
     title = row["Title"] or "Tanpa judul"
     body = fetched.get("text") or ""
-    lang = language.detect_lang(f"{title} {body[:2000]}")
+    lang = row_language(title, body, row.get("Source_Lang") or "")
     filename = f"{number:03d}_{publisher_slug}_{slugify(title, 'article')}.docx"
     meta = {
         "Publisher": row.get("Publisher", ""),
@@ -175,7 +191,7 @@ def write_failed(path, results):
     return path
 
 
-def build_meta(config, rows, results):
+def build_meta(config, results):
     by_reason = {}
     for result in results:
         if result["status"] != "ok":
@@ -247,7 +263,7 @@ def main():
     write_failed(outdir / "failed.csv", results)
     if config["update_xlsx"]:
         exporter.update_fulltext_status(config["xlsx"], results)
-    meta = build_meta(config, rows, results)
+    meta = build_meta(config, results)
     exporter.write_meta(meta, outdir / "corpus-meta.json")
     print(f"rows={len(rows)} ok={meta['ok']} failed={meta['failed']} dir={outdir}")
     return 0

@@ -79,6 +79,53 @@ def test_build_meta_merges_fetch_and_filter_stats():
     assert meta["dropped_irrelevant_samples"] == ["noise"]
 
 
+def test_build_meta_aggregates_government_coverage_from_kept_rows():
+    stats = {
+        "kept": 3,
+        "dropped_not_2025": 0,
+        "dropped_bad_date": 0,
+        "dropped_irrelevant": 0,
+        "duplicates": 0,
+        "dropped_irrelevant_samples": [],
+        "per_query": [],
+    }
+    report = {"queries": [], "warnings": []}
+    kept = [
+        {
+            "Source_Type": "government",
+            "Publisher_Domain": "komdigi.go.id",
+            "Query_Group": "government",
+            "Found_In_Groups": ["government"],
+            "Source_Lang": "id",
+            "Government_Body": "Komdigi",
+        },
+        {
+            "Source_Type": "government",
+            "Publisher_Domain": "kemenag.go.id",
+            "Query_Group": "baseline",
+            "Found_In_Groups": "baseline, government",
+            "Source_Lang": "id",
+            "Government_Body": "",
+        },
+        {
+            "Source_Type": "other",
+            "Publisher_Domain": "kompas.com",
+            "Query_Group": "baseline",
+            "Found_In_Groups": ["baseline"],
+            "Source_Lang": "en",
+            "Government_Body": "",
+        },
+    ]
+    meta = scrape.build_meta(10, stats, report, kept)
+    assert meta["gov_rows"] == 2
+    assert meta["gov_domains"] == ["kemenag.go.id", "komdigi.go.id"]
+    assert meta["by_source_type"] == {"government": 2, "other": 1}
+    assert meta["by_query_group"] == {"baseline": 2, "government": 1}
+    assert meta["by_language"] == {"id": 2, "en": 1}
+    assert meta["by_government_body"] == {"Komdigi": 1}
+    assert meta["found_in_government"] == 2
+
+
 def test_build_meta_keeps_failed_query_rows():
     report = {
         "queries": [

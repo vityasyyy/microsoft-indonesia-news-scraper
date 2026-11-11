@@ -62,11 +62,16 @@ def write_inputs(tmp_path, rows=None, run_meta=None, corpus_meta=None):
                 "failed": 0,
                 "by_reason": {},
                 "batch_count": 1,
-                "results": [{"No": row["No"], "status": "ok", "file": "x.docx"} for row in rows],
+                "results": [
+                    {"No": row["No"], "status": "ok", "file": row["Docx_File"]} for row in rows
+                ],
             }
         ),
         encoding="utf-8",
     )
+    for row in rows:
+        if row["Docx_File"]:
+            (tmp_path / row["Docx_File"]).write_bytes(b"docx")
     return str(xlsx), str(run_path), str(corpus_path)
 
 
@@ -194,3 +199,93 @@ def test_gate_rejects_invalid_failure_reason(tmp_path):
     paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
     with pytest.raises(GateError, match="status/reason"):
         release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_pending_fulltext_status(tmp_path):
+    rows = [xlsx_row(1, Fulltext_Status="pending", Docx_File="")]
+    paths = write_inputs(tmp_path, rows=rows)
+    with pytest.raises(GateError, match="pending"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_ok_row_without_docx_file(tmp_path):
+    rows = [xlsx_row(1, Docx_File="")]
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 0,
+        "by_reason": {},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "ok", "file": "001.docx"}],
+    }
+    paths = write_inputs(tmp_path, rows=rows, corpus_meta=corpus_meta)
+    (tmp_path / "001.docx").write_bytes(b"docx")
+    with pytest.raises(GateError, match="Docx_File"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_missing_docx_file(tmp_path):
+    paths = write_inputs(tmp_path)
+    (tmp_path / "001.docx").unlink()
+    with pytest.raises(GateError, match="missing"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_docx_file_on_failed_row(tmp_path):
+    rows = [xlsx_row(1, Fulltext_Status="paywall", Docx_File="001.docx")]
+    paths = write_inputs(tmp_path, rows=rows)
+    with pytest.raises(GateError, match="Docx_File"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_corpus_counts_not_adding_up(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 1,
+        "by_reason": {"paywall": 1},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "ok", "file": "001.docx"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    with pytest.raises(GateError, match="ok\\+failed"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_missing_ok_result_file(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 0,
+        "by_reason": {},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "ok", "file": "999_missing.docx"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    with pytest.raises(GateError, match="missing"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_accepts_ok_and_failed_rows(tmp_path):
+    rows = [xlsx_row(1), xlsx_row(2, Fulltext_Status="paywall", Docx_File="")]
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 2,
+        "ok": 1,
+        "failed": 1,
+        "by_reason": {"paywall": 1},
+        "batch_count": 1,
+        "results": [
+            {"No": 1, "status": "ok", "file": "001.docx"},
+            {"No": 2, "status": "failed", "reason": "paywall"},
+        ],
+    }
+    paths = write_inputs(tmp_path, rows=rows, corpus_meta=corpus_meta)
+    assert release_gate.check(*paths, expected_batches=1) is True

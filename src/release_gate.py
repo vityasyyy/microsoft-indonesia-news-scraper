@@ -60,6 +60,21 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
     if len(set(keys)) != len(keys):
         raise GateError("duplicate URLs in xlsx")
 
+    corpus_dir = pathlib.Path(corpus_meta).parent
+    for row in rows:
+        number = row[index["No"]]
+        status = str(row[index["Fulltext_Status"]] or "").strip()
+        if status not in FULLTEXT_STATUSES or status == "pending":
+            raise GateError(f"row {number} has invalid Fulltext_Status: {status or '<empty>'}")
+        docx = str(row[index["Docx_File"]] or "").strip()
+        if status == "ok":
+            if not docx:
+                raise GateError(f"row {number} is ok but has no Docx_File")
+            if not (corpus_dir / docx).is_file():
+                raise GateError(f"row {number} Docx_File is missing: {docx}")
+        elif docx:
+            raise GateError(f"row {number} is {status} but has Docx_File: {docx}")
+
     _read_meta(run_meta, REQUIRED_RUN_META)
     corpus = _read_meta(corpus_meta, REQUIRED_CORPUS_META)
     batch_count = int(corpus.get("batch_count", 0))
@@ -67,6 +82,10 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
         raise GateError(f"batch mismatch: expected {expected_batches}, corpus meta says {batch_count}")
     if int(corpus.get("rows", 0)) != len(rows):
         raise GateError(f"corpus rows {corpus.get('rows')} != xlsx rows {len(rows)}")
+    if int(corpus.get("ok", 0)) + int(corpus.get("failed", 0)) != int(corpus.get("rows", 0)):
+        raise GateError(
+            f"corpus ok+failed {corpus.get('ok')}+{corpus.get('failed')} != rows {corpus.get('rows')}"
+        )
     if len(corpus.get("results", [])) != len(rows):
         raise GateError(f"corpus results {len(corpus.get('results', []))} != xlsx rows {len(rows)}")
     xlsx_numbers = sorted(int(row[index["No"]]) for row in rows)
@@ -83,6 +102,9 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
             raise GateError(f"row {result.get('No')} has invalid status/reason: {result}")
     if sorted(result_numbers) != xlsx_numbers:
         raise GateError("corpus results do not cover the xlsx rows")
+    for result in corpus.get("results", []):
+        if result.get("status") == "ok" and not (corpus_dir / result["file"]).is_file():
+            raise GateError(f"row {result.get('No')} ok but file is missing: {result['file']}")
     return True
 
 

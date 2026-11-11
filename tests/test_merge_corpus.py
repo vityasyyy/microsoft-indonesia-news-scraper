@@ -39,7 +39,7 @@ def write_xlsx(path, count=3):
 def write_batch(directory, index, count, results, sha="batch-sha"):
     directory.mkdir(parents=True, exist_ok=True)
     for result in results:
-        if result["status"] == "ok":
+        if result["status"] == "ok" and result.get("file"):
             docx_builder.build(
                 str(directory / result["file"]),
                 "Judul",
@@ -173,3 +173,37 @@ def test_merge_rejects_mismatched_batch_inputs(tmp_path):
             str(xlsx),
             expected_batches=2,
         )
+
+
+def test_merge_rejects_ok_result_without_file(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", 0, 1, [result(1, file=None)])
+    with pytest.raises(MergeError, match="file"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
+
+
+def test_merge_rejects_ok_result_with_missing_batch_docx(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", 0, 1, [result(1, file="999_missing.docx")])
+    (tmp_path / "b0" / "999_missing.docx").unlink()
+    with pytest.raises(MergeError, match="missing"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
+
+
+def test_merge_rejects_empty_input_sha256(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", 0, 1, [result(1)], sha="")
+    with pytest.raises(MergeError, match="input_sha256"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
+
+
+def test_merge_rejects_missing_copied_docx(tmp_path, monkeypatch):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", 0, 1, [result(1)])
+    monkeypatch.setattr(merge_corpus.shutil, "copy2", lambda source, target: None)
+    with pytest.raises(MergeError, match="copied"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)

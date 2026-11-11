@@ -40,9 +40,9 @@ In words, one run does this:
 4. **Remove duplicates** — the same article often matches several queries; it is kept once. The first keyword goes in `Keyword_Found`, the rest in `Also_Found_In`, and every query group that found it goes in `Found_In_Groups`.
 5. **Label language, never translate** — the original Indonesian or English title and snippet are stored as published. `Source_Lang` is `id`, `en`, `other`, or `unknown`; an unknown result is never forced to `id`.
 6. **Classify** — `.go.id` publishers get `Source_Type=government`; a ministry/agency alias found in the title, snippet, or publisher is stored in `Government_Body`.
-7. **Write the Excel + run log** — one styled `.xlsx` plus `run-meta.json` with per-query/per-window raw, kept, and dropped counts, plus any query errors.
+7. **Write the Excel + run log** — one styled `.xlsx` plus `run-meta.json` with per-query/per-window raw, kept, and dropped counts, government/coverage aggregates, plus any query errors.
 8. **Build the corpus** — three parallel CI batches fetch each publisher article (never the Google News interstitial), extract full text, and write one `.docx` per readable row. A merge job combines the batches and updates `Fulltext_Status`/`Docx_File` in the xlsx.
-9. **Gate + publish** — the release gate refuses to publish zero rows, non-2025 dates, duplicate URLs, missing metadata, or a missing batch. The Release contains the xlsx, the corpus zip, and `run-meta.json`.
+9. **Gate + publish** — the release gate refuses to publish zero rows, non-2025 dates, duplicate URLs, missing metadata, pending/incomplete full-text rows, or a missing batch. The Release contains the xlsx, the corpus zip, and `run-meta.json`.
 
 ## Methodology (for papers and theses)
 
@@ -96,7 +96,7 @@ Each Release is a complete, self-contained run. Schema v2 releases contain only 
 ## For developers
 
 - Set up and run: `uv sync --frozen && uv run python -m src.scrape` → `output/` (`articles-2025.xlsx` + `run-meta.json`).
-- Tests: `uv run pytest -q` (96 tests).
+- Tests: `uv run pytest -q` (118 tests).
 - Corpus locally: `make corpus` (full), `make corpus-test LIMIT=5` (preview), `make corpus-merge`, `make corpus-zip`.
 - Batched corpus (as CI runs it): `BATCH_INDEX=1 BATCH_COUNT=3 CORPUS_WORKERS=4 uv run python -m src.make_corpus`, then `uv run python -m src.merge_corpus --batches corpus-batch-0 corpus-batch-1 corpus-batch-2 --out corpus --expected-batches 3`.
 - Re-run in CI: Actions → `scrape` → `Run workflow` (manual only — no schedule).

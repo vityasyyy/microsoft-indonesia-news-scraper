@@ -111,6 +111,7 @@ def fetch(url):
         }
     html = ""
     for attempt in range(2):
+        response = None
         try:
             if attempt:
                 time.sleep(DELAY_S)
@@ -144,6 +145,9 @@ def fetch(url):
             break
         except Exception:
             html = ""
+        finally:
+            if response is not None:
+                response.close()
     if not html:
         return {
             "ok": False,

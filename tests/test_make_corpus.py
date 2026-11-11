@@ -50,6 +50,7 @@ def test_read_rows_uses_schema_v2(tmp_path):
     assert [row["No"] for row in rows] == [1, 2]
     assert rows[0]["Title"] == "Microsoft artikel 1"
     assert rows[0]["Publisher"] == "Kompas"
+    assert rows[0]["Source_Lang"] == "id"
 
 
 def test_read_rows_rejects_v1_headers(tmp_path):
@@ -141,6 +142,62 @@ def test_process_row_ok_writes_original_body_and_language_metadata(tmp_path):
     assert any("Microsoft launched" in text for text in texts)
 
 
+def test_row_language_prefers_indonesian_title_over_english_boilerplate():
+    title = "Microsoft Resmikan Pusat Data Baru di Indonesia"
+    body = "This article was originally published by the editorial team. " * 40
+    assert make_corpus.row_language(title, body) == "id"
+
+
+def test_row_language_uses_indonesian_body_for_english_title():
+    title = "Microsoft launches new cloud region in Indonesia"
+    body = "Microsoft resmi meluncurkan pusat data pertama di Indonesia pada tahun ini. " * 40
+    assert make_corpus.row_language(title, body) == "id"
+
+
+def test_row_language_stays_unknown_without_signal():
+    assert make_corpus.row_language("AI", "ok") == "unknown"
+
+
+def test_row_language_falls_back_to_xlsx_source_lang():
+    title, body = "12345 67890 abc", "12345 67890 abc" * 20
+    assert make_corpus.row_language(title, body, "id") == "id"
+
+
+def test_row_language_uses_other_only_when_all_signals_disagree_with_id_en():
+    title, body = "12345 67890 abc", "12345 67890 abc" * 20
+    assert make_corpus.row_language(title, body, "other") == "other"
+    assert make_corpus.row_language(title, body) == "unknown"
+
+
+def test_process_row_labels_indonesian_article_despite_english_boilerplate(tmp_path):
+    row = {
+        "No": 10,
+        "Publisher": "K",
+        "Title": "Microsoft Resmikan Pusat Data Baru di Indonesia",
+        "URL": "https://x.com/10",
+        "Date": "2025-06-01",
+        "Keyword_Found": "k1",
+        "Source_Lang": "other",
+    }
+    body = "This article was originally published by the editorial team. " * 40
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            make_corpus.downloader,
+            "fetch",
+            lambda url: {
+                "ok": True,
+                "text": body,
+                "reason": "",
+                "stage": "trafilatura",
+                "resolved_url": "https://x.com/10",
+            },
+        )
+        result = make_corpus.process_row(row, str(tmp_path), accessed="2026-11-11")
+    assert result["language"] == "id"
+    doc = Document(str(tmp_path / result["file"]))
+    assert any("Language: id" in paragraph.text for paragraph in doc.paragraphs)
+
+
 def test_process_row_failed_fetch_carries_resolved_url(tmp_path):
     row = {
         "No": 8,
@@ -216,7 +273,7 @@ def test_build_meta_includes_input_sha256(tmp_path):
         "preview": False,
     }
     results = [{"No": 1, "status": "ok", "file": "001.docx", "Resolved_URL": "https://x.com/1"}]
-    meta = make_corpus.build_meta(config, [{"No": 1}], results)
+    meta = make_corpus.build_meta(config, results)
     assert meta["input_sha256"] == hashlib.sha256(b"abc").hexdigest()
     assert meta["rows"] == 1
     assert meta["ok"] == 1
