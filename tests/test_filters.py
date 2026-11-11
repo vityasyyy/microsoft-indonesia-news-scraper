@@ -118,6 +118,10 @@ def test_normalize_url_removes_trailing_slash():
     assert filters.normalize_url("https://kompas.com/a/") == "https://kompas.com/a"
 
 
+def test_normalize_url_survives_malformed_url():
+    assert filters.normalize_url("http://[::1") == "http://[::1"
+
+
 def test_per_query_stats_reconcile():
     rows = [
         row(keyword="q1", title="Microsoft A"),

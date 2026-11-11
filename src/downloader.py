@@ -65,8 +65,16 @@ def _read_html(response):
         if total > MAX_BYTES:
             return None
         chunks.append(chunk)
-    encoding = getattr(response, "encoding", None) or "utf-8"
-    return b"".join(chunks).decode(encoding, errors="replace")
+    raw = b"".join(chunks)
+    encoding = getattr(response, "encoding", None)
+    # requests defaults text/html without a charset to ISO-8859-1; most
+    # Indonesian newsrooms serve UTF-8, so only trust an explicit charset.
+    if encoding and encoding.lower().replace("_", "-") not in ("iso-8859-1", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+    return raw.decode("utf-8", errors="replace")
 
 
 def _paywalled(html):

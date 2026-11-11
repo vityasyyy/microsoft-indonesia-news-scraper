@@ -36,7 +36,7 @@ def write_xlsx(path, count=3):
     exporter.export_xlsx([xlsx_row(number + 1) for number in range(count)], str(path))
 
 
-def write_batch(directory, index, count, results):
+def write_batch(directory, index, count, results, sha="batch-sha"):
     directory.mkdir(parents=True, exist_ok=True)
     for result in results:
         if result["status"] == "ok":
@@ -65,7 +65,7 @@ def write_batch(directory, index, count, results):
     meta = {
         "run_utc": "2026-11-11T00:00:00+00:00",
         "xlsx": "output/articles-2025.xlsx",
-        "input_sha256": "batch-sha",
+        "input_sha256": sha,
         "rows": len(results),
         "ok": sum(1 for result in results if result["status"] == "ok"),
         "failed": len(failed),
@@ -158,4 +158,18 @@ def test_merge_rejects_expected_batch_count_mismatch(tmp_path):
     with pytest.raises(MergeError):
         merge_corpus.merge(
             [str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=2
+        )
+
+
+def test_merge_rejects_mismatched_batch_inputs(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=2)
+    write_batch(tmp_path / "b0", 0, 2, [result(1)], sha="first")
+    write_batch(tmp_path / "b1", 1, 2, [result(2)], sha="second")
+    with pytest.raises(MergeError, match="input_sha256"):
+        merge_corpus.merge(
+            [str(tmp_path / "b0"), str(tmp_path / "b1")],
+            str(tmp_path / "out"),
+            str(xlsx),
+            expected_batches=2,
         )

@@ -87,7 +87,7 @@ One main sheet, with AutoFilter enabled so any column (including `Fulltext_Statu
 - **What counts as full text:** the Google News link is resolved to the publisher URL first. Extraction is trafilatura, then readability-lxml; pages shorter than 300 characters without a paywall marker are `thin`.
 - **Paywalls:** extraction runs first. A row is marked `paywall` only when extracted text is thin *and* a paywall marker is present. The row stays in the xlsx; it is never deleted.
 - **Honest failures:** unresolvable Google links are `decode_failed` and are never fetched as interstitials. Paywalled/bot-blocked/removed/unreadable links land in `failed.csv` with the original URL, resolved publisher URL, reason, and stage. Every row has a status; report the ok-rate in your thesis.
-- **Via CI:** Actions → `scrape` → `Run workflow` builds three corpus batches in parallel (4 workers each, 20-minute job limit), merges them, runs the release gate, and attaches one `corpus-articles-2025.zip` to the same Release as the xlsx. A failed batch blocks publishing; row-level failures do not.
+- **Via CI:** Actions → `scrape` → `Run workflow` builds three corpus batches (up to two at a time, 4 workers each, 20-minute job limit), merges them, runs the release gate, and attaches one `corpus-articles-2025.zip` to the same Release as the xlsx. A failed batch blocks publishing; row-level failures do not.
 
 ## Latest verified release
 
@@ -96,7 +96,7 @@ Each Release is a complete, self-contained run. Schema v2 releases contain only 
 ## For developers
 
 - Set up and run: `uv sync --frozen && uv run python -m src.scrape` → `output/` (`articles-2025.xlsx` + `run-meta.json`).
-- Tests: `uv run pytest -q` (90 tests).
+- Tests: `uv run pytest -q` (96 tests).
 - Corpus locally: `make corpus` (full), `make corpus-test LIMIT=5` (preview), `make corpus-merge`, `make corpus-zip`.
 - Batched corpus (as CI runs it): `BATCH_INDEX=1 BATCH_COUNT=3 CORPUS_WORKERS=4 uv run python -m src.make_corpus`, then `uv run python -m src.merge_corpus --batches corpus-batch-0 corpus-batch-1 corpus-batch-2 --out corpus --expected-batches 3`.
 - Re-run in CI: Actions → `scrape` → `Run workflow` (manual only — no schedule).

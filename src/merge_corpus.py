@@ -45,6 +45,9 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         loaded.append((batch_dir, meta))
     if not loaded:
         raise MergeError("no batch directories given")
+    hashes = {meta.get("input_sha256") for _, meta in loaded}
+    if len(hashes) != 1:
+        raise MergeError("batch input_sha256 mismatch; batches used different xlsx inputs")
     count = expected_batches or loaded[0][1].get("batch_count") or len(loaded)
     indexes = sorted(int(meta.get("batch_index", position)) for position, (_, meta) in enumerate(loaded))
     if len(loaded) != count or indexes != list(range(count)):

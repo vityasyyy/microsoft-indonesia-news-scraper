@@ -113,6 +113,12 @@ def test_oversized_response_is_capped():
     assert result["reason"] == "fetch_error"
 
 
+def test_default_latin1_encoding_does_not_mojibake_utf8_pages():
+    response = Response(payload="Microsoft — Komdigi".encode("utf-8"))
+    response.encoding = "ISO-8859-1"
+    assert "—" in downloader._read_html(response)
+
+
 @pytest.mark.parametrize(
     ("status", "reason"), [(401, "blocked"), (403, "blocked"), (404, "removed")]
 )

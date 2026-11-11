@@ -7,7 +7,9 @@ import sys
 import openpyxl
 
 from src.filters import normalize_url
-from src.schema import validate_headers
+from src.schema import FULLTEXT_STATUSES, validate_headers
+
+FAILURE_REASONS = set(FULLTEXT_STATUSES) - {"pending", "ok"}
 
 REQUIRED_RUN_META = ("run_utc", "queries", "fetch_total", "kept", "windows")
 REQUIRED_CORPUS_META = (
@@ -67,6 +69,20 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
         raise GateError(f"corpus rows {corpus.get('rows')} != xlsx rows {len(rows)}")
     if len(corpus.get("results", [])) != len(rows):
         raise GateError(f"corpus results {len(corpus.get('results', []))} != xlsx rows {len(rows)}")
+    xlsx_numbers = sorted(int(row[index["No"]]) for row in rows)
+    result_numbers = []
+    for result in corpus.get("results", []):
+        try:
+            result_numbers.append(int(result["No"]))
+        except (KeyError, TypeError, ValueError) as error:
+            raise GateError(f"invalid corpus result row: {result}") from error
+        if result.get("status") == "ok":
+            if not result.get("file"):
+                raise GateError(f"row {result.get('No')} is ok but has no Docx_File")
+        elif result.get("status") != "failed" or result.get("reason") not in FAILURE_REASONS:
+            raise GateError(f"row {result.get('No')} has invalid status/reason: {result}")
+    if sorted(result_numbers) != xlsx_numbers:
+        raise GateError("corpus results do not cover the xlsx rows")
     return True
 
 

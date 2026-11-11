@@ -72,8 +72,11 @@ def normalize_url(url):
     raw = (url or "").strip()
     if not raw:
         return ""
-    parsed = urllib.parse.urlparse(raw)
-    host = (parsed.hostname or "").lower()
+    try:
+        parsed = urllib.parse.urlparse(raw)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return raw
     if not host:
         return raw
     scheme = (parsed.scheme or "https").lower()

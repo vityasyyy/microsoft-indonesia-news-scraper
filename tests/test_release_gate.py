@@ -162,3 +162,35 @@ def test_gate_rejects_row_count_mismatch(tmp_path):
     paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
     with pytest.raises(GateError, match="rows"):
         release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_incomplete_row_coverage(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 0,
+        "by_reason": {},
+        "batch_count": 1,
+        "results": [{"No": 2, "status": "ok", "file": "x.docx"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    with pytest.raises(GateError, match="cover"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_invalid_failure_reason(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 0,
+        "failed": 1,
+        "by_reason": {"weird": 1},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "failed", "reason": "weird"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    with pytest.raises(GateError, match="status/reason"):
+        release_gate.check(*paths, expected_batches=1)

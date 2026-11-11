@@ -24,6 +24,13 @@ def test_short_text_is_unknown_not_coerced():
     assert language.detect_lang("microsoft") == "unknown"
 
 
+def test_malay_is_labeled_other_not_id(monkeypatch):
+    monkeypatch.setattr(language, "detect", lambda text: "ms")
+    assert (
+        language.detect_lang("Microsoft Malaysia mengumumkan pelaburan pusat data baharu") == "other"
+    )
+
+
 def test_clean_html_strips_tags_scripts_and_entities():
     raw = '<a href="https://news.google.com/x">Microsoft&nbsp;Indonesia</a><script>evil()</script><style>.x{}</style>'
     assert language.clean_html(raw) == "Microsoft Indonesia"

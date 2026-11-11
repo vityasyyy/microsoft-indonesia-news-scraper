@@ -31,7 +31,7 @@ def detect_lang(text):
         lang = detect(cleaned)
     except LangDetectException:
         return "unknown"
-    if lang in ("id", "ms"):
+    if lang == "id":
         return "id"
     if lang.startswith("en"):
         return "en"
