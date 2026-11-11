@@ -1,19 +1,19 @@
 [project]
 name = "microsoft-indonesia-news-scraper"
 version = "0.1.0"
-description = "Scrape 2025 Microsoft Indonesia news to a deduplicated, translated xlsx corpus"
+description = "Scrape 2025 Microsoft Indonesia news to a deduplicated, relevance-filtered xlsx corpus"
 requires-python = ">=3.11"
 dependencies = [
   "feedparser>=6.0.11",
   "python-dateutil>=2.9.0",
   "openpyxl>=3.1.5",
   "langdetect>=1.0.9",
-  "argostranslate>=1.11",
   "trafilatura>=2.0.0",
   "readability-lxml>=0.8.1",
   "python-docx>=1.1.2",
   "lxml>=5.0.0",
   "googlenewsdecoder>=0.2",
+  "requests>=2.32.0",
 ]
 
 [dependency-groups]
