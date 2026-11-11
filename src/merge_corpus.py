@@ -45,13 +45,26 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         loaded.append((batch_dir, meta))
     if not loaded:
         raise MergeError("no batch directories given")
-    hashes = {meta.get("input_sha256") or "" for _, meta in loaded}
-    if "" in hashes:
-        raise MergeError("batch input_sha256 is empty; rebuild the batch")
-    if len(hashes) != 1:
-        raise MergeError("batch input_sha256 mismatch; batches used different xlsx inputs")
+    xlsx_hash = sha256_file(xlsx)
+    for _, meta in loaded:
+        batch_hash = meta.get("input_sha256") or ""
+        if not batch_hash:
+            raise MergeError("batch input_sha256 is empty; rebuild the batch")
+        if batch_hash != xlsx_hash:
+            raise MergeError(
+                f"batch input_sha256 does not match xlsx {xlsx_hash}; rebuild the batch"
+            )
     count = expected_batches or loaded[0][1].get("batch_count") or len(loaded)
-    indexes = sorted(int(meta.get("batch_index", position)) for position, (_, meta) in enumerate(loaded))
+    indexes = []
+    for position, (_, meta) in enumerate(loaded):
+        raw_index = meta.get("batch_index")
+        if raw_index is None:
+            raise MergeError(f"batch at position {position} has no batch_index")
+        try:
+            indexes.append(int(raw_index))
+        except (TypeError, ValueError) as error:
+            raise MergeError(f"invalid batch_index: {raw_index!r}") from error
+    indexes.sort()
     if len(loaded) != count or indexes != list(range(count)):
         raise MergeError(f"expected batches 0..{count - 1}, got indexes {indexes}")
 
@@ -71,14 +84,14 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
                 name = result.get("file")
                 if not name:
                     raise MergeError(f"{batch_dir}: ok result {result.get('No')} has no docx file")
-                if not (batch_dir / name).is_file():
+                source = batch_dir / name
+                if not source.is_file():
                     raise MergeError(f"{batch_dir}: missing docx {name}")
+                shutil.copy2(source, out / name)
                 ok_files.append(name)
             else:
                 reason = result.get("reason") or "internal_error"
                 by_reason[reason] = by_reason.get(reason, 0) + 1
-        for docx in batch_dir.glob("*.docx"):
-            shutil.copy2(docx, out / docx.name)
         failed_csv = batch_dir / "failed.csv"
         if failed_csv.exists():
             with open(failed_csv, newline="", encoding="utf-8") as handle:
@@ -97,7 +110,7 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
     meta = {
         "run_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "xlsx": xlsx,
-        "input_sha256": "",
+        "input_sha256": xlsx_hash,
         "rows": len(results),
         "ok": sum(1 for result in results if result.get("status") == "ok"),
         "failed": sum(1 for result in results if result.get("status") != "ok"),
@@ -116,7 +129,7 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         "results": results,
     }
     exporter.update_fulltext_status(xlsx, results)
-    meta["input_sha256"] = sha256_file(xlsx)
+    meta["released_xlsx_sha256"] = sha256_file(xlsx)
     (out / "corpus-meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
     )

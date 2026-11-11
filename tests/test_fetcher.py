@@ -97,3 +97,23 @@ def test_retry_does_not_sleep_after_final_attempt():
                 "baseline", "q", ("2025-01-01", "2025-03-01"), "id", "ID", "ID:id", retries=3
             )
     assert sleeps == [2, 4]
+
+
+class BozoResp:
+    status_code = 200
+    text = "<html><body>Access denied"
+
+    def raise_for_status(self):
+        pass
+
+
+def test_fetch_all_records_error_for_bozo_empty_feed():
+    with patch("src.fetcher._get", return_value=BozoResp()), patch("src.fetcher.time.sleep"):
+        rows, report = fetcher.fetch_all(
+            [("baseline", "q")],
+            [("2025-01-01", "2025-03-01")],
+            locales=[("id", "ID", "ID:id")],
+            delay_s=0,
+        )
+    assert rows == []
+    assert "malformed" in report["queries"][0]["error"]

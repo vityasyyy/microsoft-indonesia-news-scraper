@@ -100,7 +100,7 @@ def config_from_env(env=None):
         "workers": workers,
         "out_dir": out_dir,
         "preview": out_dir == PREVIEW_DIR,
-        "clear_docx": full,
+        "clear_docx": full or batch_count > 1,
         "update_xlsx": full,
     }
 

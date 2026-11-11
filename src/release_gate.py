@@ -1,5 +1,6 @@
 """Release gate: refuse to publish an empty, out-of-scope, or incomplete corpus."""
 import argparse
+import datetime
 import json
 import pathlib
 import sys
@@ -48,15 +49,23 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
     rows = [
         row
         for row in ws.iter_rows(min_row=2, values_only=True)
-        if row[index["URL"]]
+        if any(value not in (None, "") for value in row)
     ]
     if not rows:
         raise GateError("xlsx has zero usable rows")
+    keys = []
     for row in rows:
-        published = row[index["Date"]]
-        if str(published)[:4] != "2025":
+        url = str(row[index["URL"]] or "").strip()
+        if not url:
+            raise GateError("empty URL in xlsx")
+        published = str(row[index["Date"]] or "").strip()
+        try:
+            day = datetime.date.fromisoformat(published)
+        except ValueError as error:
+            raise GateError(f"invalid date in xlsx: {published}") from error
+        if day.year != 2025:
             raise GateError(f"non-2025 date in xlsx: {published}")
-    keys = [normalize_url(str(row[index["URL"]])) for row in rows]
+        keys.append(normalize_url(url))
     if len(set(keys)) != len(keys):
         raise GateError("duplicate URLs in xlsx")
 
@@ -102,9 +111,39 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
             raise GateError(f"row {result.get('No')} has invalid status/reason: {result}")
     if sorted(result_numbers) != xlsx_numbers:
         raise GateError("corpus results do not cover the xlsx rows")
+    results_by_number = {int(result["No"]): result for result in corpus.get("results", [])}
+    for row in rows:
+        number = int(row[index["No"]])
+        result = results_by_number[number]
+        status = str(row[index["Fulltext_Status"]] or "").strip()
+        docx = str(row[index["Docx_File"]] or "").strip()
+        result_ok = result.get("status") == "ok"
+        if (status == "ok") != result_ok:
+            raise GateError(
+                f"row {number} status mismatch: xlsx {status} vs corpus {result.get('status')}"
+            )
+        if result_ok:
+            if docx != (result.get("file") or ""):
+                raise GateError(
+                    f"row {number} Docx_File mismatch: "
+                    f"xlsx {docx} vs corpus {result.get('file')}"
+                )
+        elif status != (result.get("reason") or ""):
+            raise GateError(
+                f"row {number} reason mismatch: xlsx {status} vs corpus {result.get('reason')}"
+            )
     for result in corpus.get("results", []):
         if result.get("status") == "ok" and not (corpus_dir / result["file"]).is_file():
             raise GateError(f"row {result.get('No')} ok but file is missing: {result['file']}")
+    expected_files = {
+        str(result["file"]) for result in corpus.get("results", []) if result.get("status") == "ok"
+    }
+    actual_files = {path.name for path in corpus_dir.glob("*.docx")}
+    if actual_files != expected_files:
+        raise GateError(
+            f"corpus docx mismatch: extra={sorted(actual_files - expected_files)} "
+            f"missing={sorted(expected_files - actual_files)}"
+        )
     return True
 
 

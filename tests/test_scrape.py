@@ -51,6 +51,7 @@ def test_build_meta_merges_fetch_and_filter_stats():
         "kept": 2,
         "dropped_not_2025": 1,
         "dropped_bad_date": 0,
+        "dropped_bad_url": 1,
         "dropped_irrelevant": 2,
         "duplicates": 0,
         "dropped_irrelevant_samples": ["noise"],
@@ -64,6 +65,7 @@ def test_build_meta_merges_fetch_and_filter_stats():
                 "kept": 2,
                 "dropped_not_2025": 1,
                 "dropped_bad_date": 0,
+                "dropped_bad_url": 1,
                 "dropped_irrelevant": 2,
                 "duplicates": 0,
             }
@@ -73,8 +75,10 @@ def test_build_meta_merges_fetch_and_filter_stats():
     assert meta["schema_version"] == 2
     assert meta["fetch_total"] == 5
     assert meta["kept"] == 2
+    assert meta["dropped_bad_url"] == 1
     assert meta["queries"][0]["raw"] == 5
     assert meta["queries"][0]["kept"] == 2
+    assert meta["queries"][0]["dropped_bad_url"] == 1
     assert meta["queries"][0]["dropped_irrelevant"] == 2
     assert meta["dropped_irrelevant_samples"] == ["noise"]
 

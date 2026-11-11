@@ -60,6 +60,8 @@ def fetch_window(group, keyword, window, hl, gl, ceid, retries=3):
             response = _get(url)
             response.raise_for_status()
             feed = feedparser.parse(response.text)
+            if feed.get("bozo") and not feed.entries:
+                raise RuntimeError(f"malformed/empty RSS feed: {feed.get('bozo_exception')}")
             window_label = f"{window[0]}..{window[1]}"
             locale = f"{hl}/{gl}"
             rows = []

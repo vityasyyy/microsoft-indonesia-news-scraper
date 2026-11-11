@@ -61,6 +61,19 @@ def test_relevance_signal_is_case_insensitive_and_checks_snippet():
     assert len(kept) == 1
 
 
+def test_microsoft_signal_accepts_elevaite_program_token():
+    assert filters.has_microsoft_signal("Program elevAIte resmi diluncurkan") is True
+
+
+def test_empty_url_is_dropped_and_counted():
+    rows = [row(url=""), row(url="https://x.com/b", title="Microsoft B")]
+    kept, stats = filters.process(rows)
+    assert len(kept) == 1
+    assert stats["dropped_bad_url"] == 1
+    per = {(entry["keyword"], entry["locale"]): entry for entry in stats["per_query"]}
+    assert per[("k1", "id/ID")]["dropped_bad_url"] == 1
+
+
 def test_language_unknown_is_not_coerced_to_id():
     rows = [row(title="microsoft", snippet="")]
     kept, _ = filters.process(rows)

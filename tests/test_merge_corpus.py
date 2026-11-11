@@ -36,7 +36,7 @@ def write_xlsx(path, count=3):
     exporter.export_xlsx([xlsx_row(number + 1) for number in range(count)], str(path))
 
 
-def write_batch(directory, index, count, results, sha="batch-sha"):
+def write_batch(directory, index, count, results, sha):
     directory.mkdir(parents=True, exist_ok=True)
     for result in results:
         if result["status"] == "ok" and result.get("file"):
@@ -94,13 +94,18 @@ def result(number, status="ok", **over):
     return base
 
 
+def batch_sha(xlsx):
+    return merge_corpus.sha256_file(str(xlsx))
+
+
 def test_merge_combines_docx_failed_csv_meta_and_updates_xlsx(tmp_path):
     xlsx = tmp_path / "output" / "articles-2025.xlsx"
     write_xlsx(xlsx, count=3)
+    sha = batch_sha(xlsx)
     batch0 = tmp_path / "corpus-batch-0"
     batch1 = tmp_path / "corpus-batch-1"
-    write_batch(batch0, 0, 2, [result(1), result(2, status="failed", reason="paywall")])
-    write_batch(batch1, 1, 2, [result(3, Resolved_URL="https://publisher.com/three")])
+    write_batch(batch0, 0, 2, [result(1), result(2, status="failed", reason="paywall")], sha)
+    write_batch(batch1, 1, 2, [result(3, Resolved_URL="https://publisher.com/three")], sha)
     out = tmp_path / "corpus"
     (out / "stale.docx").parent.mkdir(parents=True)
     (out / "stale.docx").write_bytes(b"old")
@@ -111,7 +116,9 @@ def test_merge_combines_docx_failed_csv_meta_and_updates_xlsx(tmp_path):
     assert meta["ok"] == 2
     assert meta["failed"] == 1
     assert meta["batch_count"] == 2
-    assert meta["input_sha256"] == merge_corpus.sha256_file(str(xlsx))
+    assert meta["input_sha256"] == sha
+    assert meta["released_xlsx_sha256"] == merge_corpus.sha256_file(str(xlsx))
+    assert meta["released_xlsx_sha256"] != sha
     assert not (out / "stale.docx").exists()
     assert sorted(path.name for path in out.glob("*.docx")) == [
         "001_kompas_judul.docx",
@@ -140,8 +147,9 @@ def test_merge_rejects_missing_batch_meta(tmp_path):
 def test_merge_rejects_missing_index(tmp_path):
     xlsx = tmp_path / "articles.xlsx"
     write_xlsx(xlsx, count=2)
-    write_batch(tmp_path / "b0", 0, 2, [result(1)])
-    write_batch(tmp_path / "b2", 2, 2, [result(2)])
+    sha = batch_sha(xlsx)
+    write_batch(tmp_path / "b0", 0, 2, [result(1)], sha)
+    write_batch(tmp_path / "b2", 2, 2, [result(2)], sha)
     with pytest.raises(MergeError):
         merge_corpus.merge(
             [str(tmp_path / "b0"), str(tmp_path / "b2")],
@@ -154,7 +162,7 @@ def test_merge_rejects_missing_index(tmp_path):
 def test_merge_rejects_expected_batch_count_mismatch(tmp_path):
     xlsx = tmp_path / "articles.xlsx"
     write_xlsx(xlsx, count=1)
-    write_batch(tmp_path / "b0", 0, 2, [result(1)])
+    write_batch(tmp_path / "b0", 0, 2, [result(1)], batch_sha(xlsx))
     with pytest.raises(MergeError):
         merge_corpus.merge(
             [str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=2
@@ -178,7 +186,7 @@ def test_merge_rejects_mismatched_batch_inputs(tmp_path):
 def test_merge_rejects_ok_result_without_file(tmp_path):
     xlsx = tmp_path / "articles.xlsx"
     write_xlsx(xlsx, count=1)
-    write_batch(tmp_path / "b0", 0, 1, [result(1, file=None)])
+    write_batch(tmp_path / "b0", 0, 1, [result(1, file=None)], batch_sha(xlsx))
     with pytest.raises(MergeError, match="file"):
         merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
 
@@ -186,7 +194,7 @@ def test_merge_rejects_ok_result_without_file(tmp_path):
 def test_merge_rejects_ok_result_with_missing_batch_docx(tmp_path):
     xlsx = tmp_path / "articles.xlsx"
     write_xlsx(xlsx, count=1)
-    write_batch(tmp_path / "b0", 0, 1, [result(1, file="999_missing.docx")])
+    write_batch(tmp_path / "b0", 0, 1, [result(1, file="999_missing.docx")], batch_sha(xlsx))
     (tmp_path / "b0" / "999_missing.docx").unlink()
     with pytest.raises(MergeError, match="missing"):
         merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
@@ -203,7 +211,34 @@ def test_merge_rejects_empty_input_sha256(tmp_path):
 def test_merge_rejects_missing_copied_docx(tmp_path, monkeypatch):
     xlsx = tmp_path / "articles.xlsx"
     write_xlsx(xlsx, count=1)
-    write_batch(tmp_path / "b0", 0, 1, [result(1)])
+    write_batch(tmp_path / "b0", 0, 1, [result(1)], batch_sha(xlsx))
     monkeypatch.setattr(merge_corpus.shutil, "copy2", lambda source, target: None)
     with pytest.raises(MergeError, match="copied"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
+
+
+def test_merge_rejects_batch_hash_not_matching_xlsx(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", 0, 1, [result(1)], sha="not-the-xlsx-hash")
+    with pytest.raises(MergeError, match="input_sha256"):
+        merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)
+
+
+def test_merge_copies_only_referenced_docx(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    batch = tmp_path / "b0"
+    write_batch(batch, 0, 1, [result(1)], batch_sha(xlsx))
+    docx_builder.build(str(batch / "999_orphan.docx"), "Orphan", {"Language": "id"}, "Orphan body")
+    out = tmp_path / "out"
+    merge_corpus.merge([str(batch)], str(out), str(xlsx), expected_batches=1)
+    assert [path.name for path in out.glob("*.docx")] == ["001_kompas_judul.docx"]
+
+
+def test_merge_rejects_missing_batch_index(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    write_xlsx(xlsx, count=1)
+    write_batch(tmp_path / "b0", None, 1, [result(1)], batch_sha(xlsx))
+    with pytest.raises(MergeError, match="batch_index"):
         merge_corpus.merge([str(tmp_path / "b0")], str(tmp_path / "out"), str(xlsx), expected_batches=1)

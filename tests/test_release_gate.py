@@ -289,3 +289,75 @@ def test_gate_accepts_ok_and_failed_rows(tmp_path):
     }
     paths = write_inputs(tmp_path, rows=rows, corpus_meta=corpus_meta)
     assert release_gate.check(*paths, expected_batches=1) is True
+
+
+def test_gate_rejects_xlsx_ok_but_corpus_failed(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 0,
+        "failed": 1,
+        "by_reason": {"paywall": 1},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "failed", "reason": "paywall"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    with pytest.raises(GateError, match="status mismatch"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_xlsx_failed_but_corpus_ok(tmp_path):
+    rows = [xlsx_row(1, Fulltext_Status="paywall", Docx_File="")]
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 0,
+        "by_reason": {},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "ok", "file": "001.docx"}],
+    }
+    paths = write_inputs(tmp_path, rows=rows, corpus_meta=corpus_meta)
+    (tmp_path / "001.docx").write_bytes(b"docx")
+    with pytest.raises(GateError, match="status mismatch"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_docx_file_mismatch(tmp_path):
+    corpus_meta = {
+        "run_utc": "x",
+        "input_sha256": "abc",
+        "rows": 1,
+        "ok": 1,
+        "failed": 0,
+        "by_reason": {},
+        "batch_count": 1,
+        "results": [{"No": 1, "status": "ok", "file": "002.docx"}],
+    }
+    paths = write_inputs(tmp_path, corpus_meta=corpus_meta)
+    (tmp_path / "002.docx").write_bytes(b"docx")
+    with pytest.raises(GateError, match="Docx_File mismatch"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_orphan_corpus_docx(tmp_path):
+    paths = write_inputs(tmp_path)
+    (tmp_path / "orphan.docx").write_bytes(b"docx")
+    with pytest.raises(GateError, match="docx"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_empty_url(tmp_path):
+    rows = [xlsx_row(1, URL="")]
+    paths = write_inputs(tmp_path, rows=rows)
+    with pytest.raises(GateError, match="URL"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_invalid_iso_date(tmp_path):
+    rows = [xlsx_row(1, Date="2025-99-99")]
+    paths = write_inputs(tmp_path, rows=rows)
+    with pytest.raises(GateError, match="date"):
+        release_gate.check(*paths, expected_batches=1)

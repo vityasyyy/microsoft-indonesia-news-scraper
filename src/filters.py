@@ -21,7 +21,7 @@ MICROSOFT_SIGNALS = (
     "copilot",
     "linkedin",
     "github",
-    "elevaiate",
+    "elevaite",
     "elevate",
 )
 
@@ -136,6 +136,7 @@ def process(rows, sample_limit=20):
         "kept": 0,
         "dropped_not_2025": 0,
         "dropped_bad_date": 0,
+        "dropped_bad_url": 0,
         "dropped_irrelevant": 0,
         "duplicates": 0,
     }
@@ -152,6 +153,7 @@ def process(rows, sample_limit=20):
                 "kept": 0,
                 "dropped_not_2025": 0,
                 "dropped_bad_date": 0,
+                "dropped_bad_url": 0,
                 "dropped_irrelevant": 0,
                 "duplicates": 0,
             },
@@ -159,6 +161,10 @@ def process(rows, sample_limit=20):
         stats["raw"] += 1
         totals["fetched"] += 1
 
+        if not (row.get("url") or "").strip():
+            stats["dropped_bad_url"] += 1
+            totals["dropped_bad_url"] += 1
+            continue
         published = parse_date(row.get("published_raw", ""))
         if published is None:
             stats["dropped_bad_date"] += 1

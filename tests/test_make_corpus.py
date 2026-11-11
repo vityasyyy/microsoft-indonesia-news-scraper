@@ -95,6 +95,7 @@ def test_config_from_env_defaults_and_batch_validation():
     )
     assert batch["out_dir"] == "corpus-batch-1"
     assert batch["workers"] == 4
+    assert batch["clear_docx"] is True
     assert batch["update_xlsx"] is False
     with pytest.raises(ValueError):
         make_corpus.config_from_env({"BATCH_COUNT": "2", "BATCH_INDEX": "2"})
@@ -349,6 +350,9 @@ def test_batch_run_uses_deterministic_slice(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     xlsx = tmp_path / "output" / "articles-2025.xlsx"
     write_xlsx(xlsx, count=5)
+    stale = tmp_path / "corpus-batch-1" / "stale.docx"
+    stale.parent.mkdir()
+    stale.write_bytes(b"stale")
     for name in ("LIMIT", "PREVIEW", "CORPUS_OUT", "CORPUS_XLSX"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("BATCH_INDEX", "1")
@@ -368,6 +372,7 @@ def test_batch_run_uses_deterministic_slice(tmp_path, monkeypatch):
     monkeypatch.setattr(make_corpus.downloader, "fetch", fake_fetch)
     assert make_corpus.main() == 0
     batch = tmp_path / "corpus-batch-1"
+    assert not stale.exists()
     meta = json.loads((batch / "corpus-meta.json").read_text(encoding="utf-8"))
     assert [result["No"] for result in meta["results"]] == [2, 4]
     assert meta["batch_index"] == 1

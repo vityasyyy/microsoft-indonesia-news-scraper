@@ -1,5 +1,7 @@
 """Fetch one publisher article and extract its body text."""
+import ipaddress
 import re
+import socket
 import time
 import urllib.parse
 
@@ -13,13 +15,20 @@ MAX_WORKERS = 8
 DELAY_S = 1.0
 TIMEOUT_S = 10
 MAX_BYTES = 5 * 1024 * 1024
+READ_DEADLINE_S = 20
+MAX_REDIRECTS = 5
+REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 USER_AGENT = "Mozilla/5.0 (news-corpus-research)"
 PAYWALL_MARKERS = ("berlangganan", "paywall", "subscribe to read", "lanjutkan membaca", "akses penuh")
 
 
 def _get(url, timeout=TIMEOUT_S):
     return requests.get(
-        url, headers={"User-Agent": USER_AGENT}, timeout=timeout, stream=True
+        url,
+        headers={"User-Agent": USER_AGENT},
+        timeout=timeout,
+        stream=True,
+        allow_redirects=False,
     )
 
 
@@ -29,6 +38,45 @@ def _is_http(url):
     except ValueError:
         return False
     return parsed.scheme in ("http", "https") and bool(parsed.hostname)
+
+
+def _is_public_url(url):
+    """Resolve the host and reject any non-global answer before requesting it."""
+    if not _is_http(url):
+        return False
+    host = urllib.parse.urlparse(url).hostname
+    try:
+        answers = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    if not answers:
+        return False
+    for answer in answers:
+        try:
+            address = ipaddress.ip_address(answer[4][0])
+        except ValueError:
+            return False
+        if not address.is_global:
+            return False
+    return True
+
+
+def _fetch_once(url):
+    """Request a public URL, following at most MAX_REDIRECTS validated hops."""
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        if not _is_public_url(current):
+            return None, current, "blocked target"
+        response = _get(current)
+        if response.status_code in REDIRECT_STATUSES:
+            location = (getattr(response, "headers", None) or {}).get("Location")
+            response.close()
+            if not location:
+                return None, current, "redirect without Location"
+            current = urllib.parse.urljoin(current, location)
+            continue
+        return response, current, ""
+    return None, current, "too many redirects"
 
 
 def _decode(url):
@@ -58,7 +106,10 @@ def resolve(url):
 def _read_html(response):
     chunks = []
     total = 0
+    deadline = time.monotonic() + READ_DEADLINE_S
     for chunk in response.iter_content(chunk_size=65536):
+        if time.monotonic() > deadline:
+            return None
         if not chunk:
             continue
         total += len(chunk)
@@ -86,14 +137,16 @@ def _extract(html):
     cleaned = language.strip_scripts(html)
     text = (trafilatura.extract(cleaned) or "").strip()
     if len(text) >= MIN_CHARS:
-        return text
+        return text, "trafilatura"
     try:
         from readability import Document
 
         text = language.clean_html(Document(cleaned).summary())
     except Exception:
-        return ""
-    return text if len(text) >= MIN_CHARS else ""
+        return "", ""
+    if len(text) >= MIN_CHARS:
+        return text, "readability"
+    return "", ""
 
 
 def fetch(url):
@@ -110,19 +163,28 @@ def fetch(url):
             "resolved_url": target,
         }
     html = ""
+    resolved_url = target
     for attempt in range(2):
         response = None
         try:
             if attempt:
                 time.sleep(DELAY_S)
-            response = _get(target)
+            response, resolved_url, redirect_error = _fetch_once(target)
+            if redirect_error:
+                return {
+                    "ok": False,
+                    "text": "",
+                    "reason": "fetch_error",
+                    "stage": "fetch",
+                    "resolved_url": resolved_url,
+                }
             if response.status_code in (401, 403):
                 return {
                     "ok": False,
                     "text": "",
                     "reason": "blocked",
                     "stage": "fetch",
-                    "resolved_url": target,
+                    "resolved_url": resolved_url,
                 }
             if response.status_code == 404:
                 return {
@@ -130,7 +192,7 @@ def fetch(url):
                     "text": "",
                     "reason": "removed",
                     "stage": "fetch",
-                    "resolved_url": target,
+                    "resolved_url": resolved_url,
                 }
             response.raise_for_status()
             html = _read_html(response)
@@ -140,7 +202,7 @@ def fetch(url):
                     "text": "",
                     "reason": "fetch_error",
                     "stage": "fetch",
-                    "resolved_url": target,
+                    "resolved_url": resolved_url,
                 }
             break
         except Exception:
@@ -154,17 +216,23 @@ def fetch(url):
             "text": "",
             "reason": "fetch_error",
             "stage": "fetch",
-            "resolved_url": target,
+            "resolved_url": resolved_url,
         }
-    text = _extract(html)
+    text, stage = _extract(html)
     if len(text) >= MIN_CHARS:
-        return {"ok": True, "text": text, "reason": "", "stage": "trafilatura", "resolved_url": target}
+        return {"ok": True, "text": text, "reason": "", "stage": stage, "resolved_url": resolved_url}
     if _paywalled(html):
         return {
             "ok": False,
             "text": "",
             "reason": "paywall",
             "stage": "extract",
-            "resolved_url": target,
+            "resolved_url": resolved_url,
         }
-    return {"ok": False, "text": "", "reason": "thin", "stage": "extract", "resolved_url": target}
+    return {
+        "ok": False,
+        "text": "",
+        "reason": "thin",
+        "stage": "extract",
+        "resolved_url": resolved_url,
+    }

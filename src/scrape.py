@@ -75,6 +75,7 @@ def build_meta(fetch_total, stats, report, kept=None):
                 "kept": counts.get("kept", 0),
                 "dropped_not_2025": counts.get("dropped_not_2025", 0),
                 "dropped_bad_date": counts.get("dropped_bad_date", 0),
+                "dropped_bad_url": counts.get("dropped_bad_url", 0),
                 "dropped_irrelevant": counts.get("dropped_irrelevant", 0),
                 "duplicates": counts.get("duplicates", 0),
             }
@@ -104,6 +105,7 @@ def build_meta(fetch_total, stats, report, kept=None):
         ),
         "dropped_not_2025": stats["dropped_not_2025"],
         "dropped_bad_date": stats["dropped_bad_date"],
+        "dropped_bad_url": stats.get("dropped_bad_url", 0),
         "dropped_irrelevant": stats["dropped_irrelevant"],
         "duplicates": stats["duplicates"],
         "dropped_irrelevant_samples": stats["dropped_irrelevant_samples"],
