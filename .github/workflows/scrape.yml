@@ -7,34 +7,92 @@ on:
   workflow_dispatch: {} # manual button
 permissions:
   contents: write
+concurrency:
+  group: scrape-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+      - run: uv sync --frozen
       - run: uv run pytest -q
       - run: uv run python -m src.scrape
-      - name: Restore Argos model cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/argos-translate
-          key: argos-model-en-id-1.9
-      - run: make corpus
-      - run: ./scripts/zip_corpus.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: articles-2025
+          name: scrape-output
           path: output/
+  corpus:
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        index: [0, 1, 2]
+    env:
+      BATCH_INDEX: ${{ matrix.index }}
+      BATCH_COUNT: 3
+      CORPUS_WORKERS: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: scrape-output
+          path: output/
+      - name: Build corpus batch ${{ matrix.index }}
+        run: uv run python -m src.make_corpus
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corpus-batch-${{ matrix.index }}
+          path: corpus-batch-${{ matrix.index }}/
+  publish:
+    needs: corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: scrape-output
+          path: output/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: corpus-batch-*
+          path: batches/
+      - name: Merge corpus batches
+        run: |
+          BATCH_DIRS=$(find batches -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ -z "$BATCH_DIRS" ]; then echo "no corpus batch artifacts"; exit 1; fi
+          uv run python -m src.merge_corpus \
+            --batches $BATCH_DIRS \
+            --out corpus \
+            --xlsx output/articles-2025.xlsx \
+            --expected-batches 3
+      - name: Release gate
+        run: |
+          uv run python -m src.release_gate \
+            --xlsx output/articles-2025.xlsx \
+            --run-meta output/run-meta.json \
+            --corpus-meta corpus/corpus-meta.json \
+            --expected-batches 3
+      - run: ./scripts/zip_corpus.sh
       - uses: actions/upload-artifact@v4
         with:
           name: corpus-2025
           path: corpus/
-      - name: Release xlsx + corpus
+      - name: Release xlsx + corpus + run meta
         uses: softprops/action-gh-release@v2
         with:
           tag_name: articles-2025-${{ github.run_number }}
           files: |
             output/articles-2025.xlsx
+            output/run-meta.json
             corpus-articles-2025.zip

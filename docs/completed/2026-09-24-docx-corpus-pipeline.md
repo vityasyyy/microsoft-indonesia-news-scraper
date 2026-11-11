@@ -1,5 +1,10 @@
 # DOCX Corpus Pipeline Implementation Plan
 
+> **Historical note (2026-11-11):** this plan was executed on 2026-09-24.
+> Machine translation was later removed; the current corpus keeps original
+> text, labels language, and runs in batched CI. See the README and
+> `docs/methodology-note.md` for current behavior.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a local-first, parallel full-text corpus builder that turns every xlsx row into one Indonesian `.docx` file, plus a CI extension that ships the corpus zip in the same Release as the xlsx.

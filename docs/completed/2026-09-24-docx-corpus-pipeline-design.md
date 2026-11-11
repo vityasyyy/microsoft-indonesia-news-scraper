@@ -1,5 +1,12 @@
 # DOCX Corpus Pipeline (Phase 2) — Design Spec
 
+> **Superseded 2026-11-11:** the machine-translation requirement below (Argos
+> EN→ID) was removed. The corpus now stores the original English/Indonesian
+> full text, labels `Language` in docx metadata, and adds the Microsoft
+> relevance gate, paywall-after-extraction status, batched CI execution, a
+> merge step, and a release gate. Current behavior lives in the README and
+> `docs/methodology-note.md`; this file is historical.
+
 Date: 2026-09-24
 Status: Approved by user (CI-first revision)
 Phase 1 prerequisite: done and proven (180-row xlsx, release `articles-2025-4`).

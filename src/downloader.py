@@ -1,81 +1,238 @@
-"""Fetch one article URL and extract body text via fallback chain."""
+"""Fetch one publisher article and extract its body text."""
+import ipaddress
 import re
+import socket
 import time
+import urllib.parse
+
 import requests
 import trafilatura
+
+from src import language
 
 MIN_CHARS = 300
 MAX_WORKERS = 8
 DELAY_S = 1.0
 TIMEOUT_S = 10
+MAX_BYTES = 5 * 1024 * 1024
+READ_DEADLINE_S = 20
+MAX_REDIRECTS = 5
+REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 USER_AGENT = "Mozilla/5.0 (news-corpus-research)"
 PAYWALL_MARKERS = ("berlangganan", "paywall", "subscribe to read", "lanjutkan membaca", "akses penuh")
-TAG_RE = re.compile(r"<[^>]+>")
+
 
 def _get(url, timeout=TIMEOUT_S):
-    return requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+    return requests.get(
+        url,
+        headers={"User-Agent": USER_AGENT},
+        timeout=timeout,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+def _is_http(url):
+    try:
+        parsed = urllib.parse.urlparse(url or "")
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.hostname)
+
+
+def _is_public_url(url):
+    """Resolve the host and reject any non-global answer before requesting it."""
+    if not _is_http(url):
+        return False
+    host = urllib.parse.urlparse(url).hostname
+    try:
+        answers = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    if not answers:
+        return False
+    for answer in answers:
+        try:
+            address = ipaddress.ip_address(answer[4][0])
+        except ValueError:
+            return False
+        if not address.is_global:
+            return False
+    return True
+
+
+def _fetch_once(url):
+    """Request a public URL, following at most MAX_REDIRECTS validated hops."""
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        if not _is_public_url(current):
+            return None, current, "blocked target"
+        response = _get(current)
+        if response.status_code in REDIRECT_STATUSES:
+            location = (getattr(response, "headers", None) or {}).get("Location")
+            response.close()
+            if not location:
+                return None, current, "redirect without Location"
+            current = urllib.parse.urljoin(current, location)
+            continue
+        return response, current, ""
+    return None, current, "too many redirects"
+
 
 def _decode(url):
     """Resolve a Google News redirect link to the publisher article URL."""
     from googlenewsdecoder import gnewsdecoder
-    res = gnewsdecoder(url, interval=1)
-    if isinstance(res, dict) and res.get("success") and res.get("decoded_url"):
-        return res["decoded_url"]
+
+    result = gnewsdecoder(url, interval=1)
+    if isinstance(result, dict) and result.get("success") and result.get("decoded_url"):
+        return result["decoded_url"]
     raise RuntimeError(f"could not decode {url}")
 
+
 def resolve(url):
-    """Google News RSS links redirect to interstitial pages; resolve them first."""
-    import urllib.parse
+    """Return (target_url, error). Google failures never fall through."""
     try:
         host = (urllib.parse.urlparse(url or "").hostname or "").lower()
-    except Exception:
-        return url
-    if host == "news.google.com":
+    except ValueError:
+        return url, "fetch_error"
+    if host.startswith("news.google."):
         try:
-            return _decode(url)
+            return _decode(url), ""
         except Exception:
-            return url
-    return url
+            return url, "decode_failed"
+    return url, ""
 
-def _clean(text):
-    t = TAG_RE.sub(" ", text or "")
-    return re.sub(r"\s+", " ", t).strip()
+
+def _read_html(response):
+    chunks = []
+    total = 0
+    deadline = time.monotonic() + READ_DEADLINE_S
+    for chunk in response.iter_content(chunk_size=65536):
+        if time.monotonic() > deadline:
+            return None
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > MAX_BYTES:
+            return None
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    encoding = getattr(response, "encoding", None)
+    # requests defaults text/html without a charset to ISO-8859-1; most
+    # Indonesian newsrooms serve UTF-8, so only trust an explicit charset.
+    if encoding and encoding.lower().replace("_", "-") not in ("iso-8859-1", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+    return raw.decode("utf-8", errors="replace")
+
 
 def _paywalled(html):
-    low = (html or "").lower()
-    return any(m in low for m in PAYWALL_MARKERS)
+    lowered = (html or "").lower()
+    return any(marker in lowered for marker in PAYWALL_MARKERS)
+
+
+def _extract(html):
+    cleaned = language.strip_scripts(html)
+    text = (trafilatura.extract(cleaned) or "").strip()
+    if len(text) >= MIN_CHARS:
+        return text, "trafilatura"
+    try:
+        from readability import Document
+
+        text = language.clean_html(Document(cleaned).summary())
+    except Exception:
+        return "", ""
+    if len(text) >= MIN_CHARS:
+        return text, "readability"
+    return "", ""
+
 
 def fetch(url):
-    target = resolve(url)
+    """Never raise: every URL resolves to ok or a closed-set failure reason."""
+    target, error = resolve(url)
+    if error:
+        return {"ok": False, "text": "", "reason": error, "stage": "resolve", "resolved_url": ""}
+    if not _is_http(target):
+        return {
+            "ok": False,
+            "text": "",
+            "reason": "fetch_error",
+            "stage": "resolve",
+            "resolved_url": target,
+        }
     html = ""
-    for _ in range(2):
+    resolved_url = target
+    for attempt in range(2):
+        response = None
         try:
-            time.sleep(DELAY_S)
-            r = _get(target)
-            if r.status_code in (401, 403):
-                return {"ok": False, "text": "", "reason": "blocked", "stage": "fetch"}
-            if r.status_code == 404:
-                return {"ok": False, "text": "", "reason": "removed", "stage": "fetch"}
-            r.raise_for_status()
-            html = r.text or ""
+            if attempt:
+                time.sleep(DELAY_S)
+            response, resolved_url, redirect_error = _fetch_once(target)
+            if redirect_error:
+                return {
+                    "ok": False,
+                    "text": "",
+                    "reason": "fetch_error",
+                    "stage": "fetch",
+                    "resolved_url": resolved_url,
+                }
+            if response.status_code in (401, 403):
+                return {
+                    "ok": False,
+                    "text": "",
+                    "reason": "blocked",
+                    "stage": "fetch",
+                    "resolved_url": resolved_url,
+                }
+            if response.status_code == 404:
+                return {
+                    "ok": False,
+                    "text": "",
+                    "reason": "removed",
+                    "stage": "fetch",
+                    "resolved_url": resolved_url,
+                }
+            response.raise_for_status()
+            html = _read_html(response)
+            if html is None:
+                return {
+                    "ok": False,
+                    "text": "",
+                    "reason": "fetch_error",
+                    "stage": "fetch",
+                    "resolved_url": resolved_url,
+                }
             break
         except Exception:
             html = ""
+        finally:
+            if response is not None:
+                response.close()
     if not html:
-        return {"ok": False, "text": "", "reason": "fetch_error", "stage": "fetch"}
-    if _paywalled(html):
-        return {"ok": False, "text": "", "reason": "paywall", "stage": "paywall-check"}
-    text = (trafilatura.extract(html) or "").strip()
+        return {
+            "ok": False,
+            "text": "",
+            "reason": "fetch_error",
+            "stage": "fetch",
+            "resolved_url": resolved_url,
+        }
+    text, stage = _extract(html)
     if len(text) >= MIN_CHARS:
-        return {"ok": True, "text": text, "reason": "", "stage": "trafilatura"}
-    try:
-        from readability import Document
-        text2 = _clean(Document(html).summary())
-        if len(text2) >= MIN_CHARS:
-            return {"ok": True, "text": text2, "reason": "", "stage": "readability"}
-    except Exception:
-        text2 = ""
-    raw = _clean(html)
-    if len(raw) >= MIN_CHARS:
-        return {"ok": True, "text": raw, "reason": "", "stage": "raw"}
-    return {"ok": False, "text": "", "reason": "thin", "stage": "raw"}
+        return {"ok": True, "text": text, "reason": "", "stage": stage, "resolved_url": resolved_url}
+    if _paywalled(html):
+        return {
+            "ok": False,
+            "text": "",
+            "reason": "paywall",
+            "stage": "extract",
+            "resolved_url": resolved_url,
+        }
+    return {
+        "ok": False,
+        "text": "",
+        "reason": "thin",
+        "stage": "extract",
+        "resolved_url": resolved_url,
+    }
