@@ -8,8 +8,8 @@ import shutil
 import sys
 
 from src import exporter
-from src.make_corpus import sha256_file
-from src.schema import FAILED_COLUMNS
+from src.make_corpus import count_flags, sha256_file
+from src.schema import ANALYSIS_STATES, FAILED_COLUMNS, MICROSOFT_MENTIONS
 
 REQUIRED_CORPUS_META = (
     "run_utc",
@@ -107,6 +107,8 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         for row in failed_rows:
             writer.writerow({column: row.get(column, "") for column in FAILED_COLUMNS})
 
+    mentions = count_flags(results, "microsoft_mention", MICROSOFT_MENTIONS)
+    analyses = count_flags(results, "analysis_ready", ANALYSIS_STATES)
     meta = {
         "run_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "xlsx": xlsx,
@@ -115,6 +117,12 @@ def merge(batch_dirs, outdir, xlsx, expected_batches=None):
         "ok": sum(1 for result in results if result.get("status") == "ok"),
         "failed": sum(1 for result in results if result.get("status") != "ok"),
         "by_reason": by_reason,
+        "microsoft_mention_yes": mentions["yes"],
+        "microsoft_mention_no": mentions["no"],
+        "microsoft_mention_unknown": mentions["unknown"],
+        "analysis_ready_yes": analyses["yes"],
+        "analysis_ready_no": analyses["no"],
+        "analysis_ready_review": analyses["review"],
         "batch_count": count,
         "batches": [
             {

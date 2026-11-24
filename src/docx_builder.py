@@ -13,7 +13,9 @@ def build(path, title, meta, body):
         f"Date: {meta.get('Date', '')} | "
         f"Keyword: {meta.get('Keyword_Found', '')} | "
         f"Accessed: {meta.get('Accessed', '')} | "
-        f"Language: {meta.get('Language', 'unknown')}"
+        f"Language: {meta.get('Language', 'unknown')} | "
+        f"Microsoft mention: {meta.get('Microsoft_Mention', 'unknown')} | "
+        f"Analysis ready: {meta.get('Analysis_Ready', 'review')}"
     )
     doc.add_paragraph(f"URL: {meta.get('URL', '')}")
     if meta.get("Resolved_URL"):

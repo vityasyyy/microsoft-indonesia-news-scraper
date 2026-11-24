@@ -72,7 +72,7 @@ def test_build_meta_merges_fetch_and_filter_stats():
         ],
     }
     meta = scrape.build_meta(5, stats, report)
-    assert meta["schema_version"] == 2
+    assert meta["schema_version"] == 3
     assert meta["fetch_total"] == 5
     assert meta["kept"] == 2
     assert meta["dropped_bad_url"] == 1

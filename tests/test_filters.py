@@ -149,3 +149,10 @@ def test_per_query_stats_reconcile():
     assert per[("q1", "id/ID")]["dropped_irrelevant"] == 1
     assert per[("q2", "en-US/US")]["kept"] == 1
     assert stats["kept"] == 2
+
+
+def test_kept_rows_are_marked_signal_yes_and_pending_analysis():
+    kept, _ = filters.process([row(title="Microsoft Indonesia", snippet="Azure")])
+    assert kept[0]["Microsoft_Signal"] == "yes"
+    assert kept[0]["Microsoft_Mention"] == "unknown"
+    assert kept[0]["Analysis_Ready"] == "yes"
