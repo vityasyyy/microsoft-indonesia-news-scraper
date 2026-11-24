@@ -10,7 +10,7 @@ How docs work in this repo (for everyone, including non-technical readers):
 
 - [Article Scrape Pipeline — Design Spec (completed)](completed/2026-09-22-article-scrape-pipeline-design.md) — Phase 1 xlsx inventory design. Historical: describes the original translation-era schema; the current schema and rules are in the README and methodology note.
 - [Article Scrape Pipeline — Implementation Plan (completed)](completed/2026-09-22-article-scrape-pipeline.md) — step-by-step build plan for Phase 1 (historical).
-- [Methodology Note](methodology-note.md) — citable research appendix: sources, 15 queries, 2025 filter, relevance gate, dedupe, language labeling (no translation), corpus method, reproducibility.
+- [Methodology Note](methodology-note.md) — citable research appendix: sources, fresh 15-query sample and legacy 180-row sample, 2025 filter, relevance gate vs relevance labels, dedupe, language labeling (no translation), corpus method, reproducibility.
 - [DOCX Corpus Pipeline — Design Spec (completed, superseded)](completed/2026-09-24-docx-corpus-pipeline-design.md) — Phase 2 design. Machine translation was removed on 2026-11-11; see the superseded note in the file.
 - [DOCX Corpus Pipeline — Implementation Plan (completed)](completed/2026-09-24-docx-corpus-pipeline.md) — historical execution plan for Phase 2.
 

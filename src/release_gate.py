@@ -8,11 +8,18 @@ import sys
 import openpyxl
 
 from src.filters import normalize_url
-from src.schema import FULLTEXT_STATUSES, validate_headers
+from src.schema import (
+    ANALYSIS_STATES,
+    FULLTEXT_STATUSES,
+    MICROSOFT_MENTIONS,
+    MICROSOFT_SIGNALS,
+    validate_headers,
+)
 
 FAILURE_REASONS = set(FULLTEXT_STATUSES) - {"pending", "ok"}
 
 REQUIRED_RUN_META = ("run_utc", "queries", "fetch_total", "kept", "windows")
+REQUIRED_LEGACY_RUN_META = ("run_utc", "schema_version", "mode", "rows", "errors")
 REQUIRED_CORPUS_META = (
     "run_utc",
     "input_sha256",
@@ -34,6 +41,17 @@ def _read_meta(path, required):
     if not meta_path.exists():
         raise GateError(f"missing meta: {path}")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    missing = [key for key in required if key not in meta]
+    if missing:
+        raise GateError(f"{path}: missing required keys: {', '.join(missing)}")
+    return meta
+
+
+def _read_run_meta(path):
+    meta = _read_meta(path, ())
+    required = (
+        REQUIRED_LEGACY_RUN_META if meta.get("mode") == "legacy" else REQUIRED_RUN_META
+    )
     missing = [key for key in required if key not in meta]
     if missing:
         raise GateError(f"{path}: missing required keys: {', '.join(missing)}")
@@ -65,6 +83,15 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
             raise GateError(f"invalid date in xlsx: {published}") from error
         if day.year != 2025:
             raise GateError(f"non-2025 date in xlsx: {published}")
+        signal = str(row[index["Microsoft_Signal"]] or "").strip()
+        if signal not in MICROSOFT_SIGNALS:
+            raise GateError(f"row {row[index['No']]} has invalid Microsoft_Signal: {signal or '<empty>'}")
+        mention = str(row[index["Microsoft_Mention"]] or "").strip()
+        if mention not in MICROSOFT_MENTIONS:
+            raise GateError(f"row {row[index['No']]} has invalid Microsoft_Mention: {mention or '<empty>'}")
+        ready = str(row[index["Analysis_Ready"]] or "").strip()
+        if ready not in ANALYSIS_STATES:
+            raise GateError(f"row {row[index['No']]} has invalid Analysis_Ready: {ready or '<empty>'}")
         keys.append(normalize_url(url))
     if len(set(keys)) != len(keys):
         raise GateError("duplicate URLs in xlsx")
@@ -84,7 +111,14 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
         elif docx:
             raise GateError(f"row {number} is {status} but has Docx_File: {docx}")
 
-    _read_meta(run_meta, REQUIRED_RUN_META)
+    run = _read_run_meta(run_meta)
+    if run.get("mode") == "legacy":
+        try:
+            run_rows = int(run.get("rows", -1))
+        except (TypeError, ValueError) as error:
+            raise GateError(f"legacy run meta has invalid rows: {run.get('rows')!r}") from error
+        if run_rows != len(rows):
+            raise GateError(f"legacy run meta rows {run_rows} != xlsx rows {len(rows)}")
     corpus = _read_meta(corpus_meta, REQUIRED_CORPUS_META)
     batch_count = int(corpus.get("batch_count", 0))
     if expected_batches is not None and batch_count != expected_batches:

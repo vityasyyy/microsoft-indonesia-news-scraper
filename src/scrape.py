@@ -1,8 +1,9 @@
-"""Entry: scrape Microsoft-related 2025 news -> schema v2 xlsx + run-meta."""
+"""Entry: scrape Microsoft-related 2025 news -> schema v3 xlsx + run-meta."""
 import datetime
 import pathlib
 
 from src import exporter, fetcher, filters
+from src.schema import SCHEMA_VERSION
 
 # Baseline keeps the four original method-traceable queries. The cloud-region
 # query now names Microsoft explicitly: a 2025-01-01..2025-03-01 probe returned
@@ -82,7 +83,7 @@ def build_meta(fetch_total, stats, report, kept=None):
         )
     return {
         "run_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "schema_version": 2,
+        "schema_version": SCHEMA_VERSION,
         "queries": queries,
         "windows": [f"{start}..{end}" for start, end in WINDOWS],
         "keywords": [query for _, query in planned_queries()],

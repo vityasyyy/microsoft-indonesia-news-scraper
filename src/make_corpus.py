@@ -6,12 +6,20 @@ import json
 import os
 import pathlib
 import re
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 import openpyxl
 
-from src import downloader, docx_builder, exporter, language
-from src.schema import FAILED_COLUMNS, SchemaError, validate_headers
+from src import downloader, docx_builder, exporter, filters, language
+from src.schema import (
+    ANALYSIS_STATES,
+    FAILED_COLUMNS,
+    MICROSOFT_MENTIONS,
+    MICROSOFT_SIGNALS,
+    SchemaError,
+    validate_headers,
+)
 
 XLSX_IN = "output/articles-2025.xlsx"
 FULL_DIR = "corpus"
@@ -49,11 +57,16 @@ def read_rows(xlsx):
             {
                 "No": cells[index["No"]],
                 "Publisher": cells[index["Publisher"]] or "",
+                "Publisher_Domain": cells[index["Publisher_Domain"]] or "",
                 "Title": (cells[index["Title"]] or "").strip(),
+                "Snippet": cells[index["Snippet"]] or "",
                 "URL": (cells[index["URL"]] or "").strip(),
                 "Date": str(cells[index["Date"]] or ""),
                 "Keyword_Found": cells[index["Keyword_Found"]] or "",
                 "Source_Lang": cells[index["Source_Lang"]] or "",
+                "Microsoft_Signal": cells[index["Microsoft_Signal"]] or "",
+                "Microsoft_Mention": cells[index["Microsoft_Mention"]] or "",
+                "Analysis_Ready": cells[index["Analysis_Ready"]] or "",
             }
         )
     return [row for row in rows if row["URL"]]
@@ -125,26 +138,67 @@ def row_language(title, body, source_lang=""):
     return "unknown"
 
 
+def row_signal(row, title):
+    signal = str(row.get("Microsoft_Signal") or "").strip().lower()
+    if signal in MICROSOFT_SIGNALS:
+        return signal
+    text = f"{title} {row.get('Snippet') or ''}"
+    return "yes" if filters.has_microsoft_signal(text) else "no"
+
+
+def analysis_ready(signal, mention):
+    if signal == "yes" or mention == "yes":
+        return "yes"
+    if mention == "no":
+        return "no"
+    return "review"
+
+
+def publisher_domain(url):
+    try:
+        return (urllib.parse.urlparse(url or "").hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def count_flags(results, key, values):
+    counts = {value: 0 for value in values}
+    for result in results:
+        value = result.get(key)
+        if value in counts:
+            counts[value] += 1
+    return counts
+
+
 def process_row(row, outdir, accessed=None):
     number = int(row["No"])
     publisher_slug = slugify(row["Publisher"], "unknown")
     fetched = downloader.fetch(row["URL"])
+    domain = publisher_domain(fetched.get("resolved_url") or "")
+    title = row["Title"] or "Tanpa judul"
+    signal = row_signal(row, title)
     base = {
         "No": number,
         "URL": row["URL"],
         "Resolved_URL": fetched.get("resolved_url") or "",
         "Publisher": row.get("Publisher", ""),
         "Keyword_Found": row.get("Keyword_Found", ""),
+        "publisher_domain": domain,
+        "microsoft_signal": signal,
     }
     if not fetched.get("ok"):
+        mention = "unknown"
         return {
             "status": "failed",
             **base,
             "reason": fetched.get("reason") or "fetch_error",
             "stage": fetched.get("stage") or "fetch",
+            "microsoft_mention": mention,
+            "analysis_ready": analysis_ready(signal, mention),
         }
-    title = row["Title"] or "Tanpa judul"
     body = fetched.get("text") or ""
+    mention = "yes" if filters.has_microsoft_signal(f"{title} {body}") else "no"
+    ready = analysis_ready(signal, mention)
     lang = row_language(title, body, row.get("Source_Lang") or "")
     filename = f"{number:03d}_{publisher_slug}_{slugify(title, 'article')}.docx"
     meta = {
@@ -155,12 +209,28 @@ def process_row(row, outdir, accessed=None):
         "Keyword_Found": row.get("Keyword_Found", ""),
         "Accessed": accessed or utc_today(),
         "Language": lang,
+        "Microsoft_Mention": mention,
+        "Analysis_Ready": ready,
     }
     try:
         docx_builder.build(str(pathlib.Path(outdir) / filename), title, meta, body)
     except Exception:
-        return {"status": "failed", **base, "reason": "internal_error", "stage": "docx"}
-    return {"status": "ok", **base, "file": filename, "language": lang}
+        return {
+            "status": "failed",
+            **base,
+            "reason": "internal_error",
+            "stage": "docx",
+            "microsoft_mention": mention,
+            "analysis_ready": ready,
+        }
+    return {
+        "status": "ok",
+        **base,
+        "file": filename,
+        "language": lang,
+        "microsoft_mention": mention,
+        "analysis_ready": ready,
+    }
 
 
 def safe_process(row, outdir, accessed=None):
@@ -168,6 +238,7 @@ def safe_process(row, outdir, accessed=None):
     try:
         return process_row(row, outdir, accessed)
     except Exception:
+        signal = row_signal(row, row.get("Title") or "Tanpa judul")
         return {
             "status": "failed",
             "No": row.get("No"),
@@ -175,6 +246,10 @@ def safe_process(row, outdir, accessed=None):
             "Resolved_URL": "",
             "Publisher": row.get("Publisher", ""),
             "Keyword_Found": row.get("Keyword_Found", ""),
+            "publisher_domain": "",
+            "microsoft_signal": signal,
+            "microsoft_mention": "unknown",
+            "analysis_ready": analysis_ready(signal, "unknown"),
             "reason": "internal_error",
             "stage": "row",
         }
@@ -197,6 +272,8 @@ def build_meta(config, results):
         if result["status"] != "ok":
             reason = result.get("reason") or "internal_error"
             by_reason[reason] = by_reason.get(reason, 0) + 1
+    mentions = count_flags(results, "microsoft_mention", MICROSOFT_MENTIONS)
+    analyses = count_flags(results, "analysis_ready", ANALYSIS_STATES)
     return {
         "run_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "xlsx": config["xlsx"],
@@ -205,6 +282,12 @@ def build_meta(config, results):
         "ok": sum(1 for result in results if result["status"] == "ok"),
         "failed": sum(1 for result in results if result["status"] != "ok"),
         "by_reason": by_reason,
+        "microsoft_mention_yes": mentions["yes"],
+        "microsoft_mention_no": mentions["no"],
+        "microsoft_mention_unknown": mentions["unknown"],
+        "analysis_ready_yes": analyses["yes"],
+        "analysis_ready_no": analyses["no"],
+        "analysis_ready_review": analyses["review"],
         "batch_index": config["batch_index"],
         "batch_count": config["batch_count"],
         "workers": config["workers"],
@@ -223,6 +306,10 @@ def build_meta(config, results):
                     "reason",
                     "stage",
                     "language",
+                    "publisher_domain",
+                    "microsoft_signal",
+                    "microsoft_mention",
+                    "analysis_ready",
                 )
             }
             for result in results

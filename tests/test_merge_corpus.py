@@ -24,6 +24,9 @@ def xlsx_row(number, **over):
             "Date": "2025-03-10",
             "Keyword_Found": "k1",
             "Source_Lang": "id",
+            "Microsoft_Signal": "yes",
+            "Microsoft_Mention": "unknown",
+            "Analysis_Ready": "yes",
             "Fulltext_Status": "pending",
         }
     )
@@ -89,6 +92,9 @@ def result(number, status="ok", **over):
         "file": f"{number:03d}_kompas_judul.docx" if status == "ok" else None,
         "reason": None if status == "ok" else "paywall",
         "stage": None if status == "ok" else "extract",
+        "publisher_domain": "kompas.com",
+        "microsoft_mention": "yes" if status == "ok" else "unknown",
+        "analysis_ready": "yes" if status == "ok" else "review",
     }
     base.update(over)
     return base
@@ -117,6 +123,10 @@ def test_merge_combines_docx_failed_csv_meta_and_updates_xlsx(tmp_path):
     assert meta["failed"] == 1
     assert meta["batch_count"] == 2
     assert meta["input_sha256"] == sha
+    assert meta["microsoft_mention_yes"] == 2
+    assert meta["microsoft_mention_unknown"] == 1
+    assert meta["analysis_ready_yes"] == 2
+    assert meta["analysis_ready_review"] == 1
     assert meta["released_xlsx_sha256"] == merge_corpus.sha256_file(str(xlsx))
     assert meta["released_xlsx_sha256"] != sha
     assert not (out / "stale.docx").exists()
@@ -137,6 +147,14 @@ def test_merge_combines_docx_failed_csv_meta_and_updates_xlsx(tmp_path):
     ]
     assert statuses == ["ok", "paywall", "ok"]
     assert files == ["001_kompas_judul.docx", None, "003_kompas_judul.docx"]
+    mentions = [
+        row[schema.COLUMNS.index("Microsoft_Mention")] for row in ws.iter_rows(min_row=2, values_only=True)
+    ]
+    analyses = [
+        row[schema.COLUMNS.index("Analysis_Ready")] for row in ws.iter_rows(min_row=2, values_only=True)
+    ]
+    assert mentions == ["yes", "unknown", "yes"]
+    assert analyses == ["yes", "review", "yes"]
 
 
 def test_merge_rejects_missing_batch_meta(tmp_path):

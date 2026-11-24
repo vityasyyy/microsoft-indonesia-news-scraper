@@ -1,9 +1,10 @@
-"""Schema v2 xlsx writer, run-meta writer, and corpus status updater."""
+"""Schema v3 xlsx writer, run-meta writer, and corpus status updater."""
 import json
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from src.filters import source_type
 from src.schema import COLUMNS, FULLTEXT_STATUSES, validate_headers
 
 WIDTHS = {
@@ -20,6 +21,9 @@ WIDTHS = {
     "Keyword_Found": 34,
     "Also_Found_In": 30,
     "Source_Lang": 11,
+    "Microsoft_Signal": 15,
+    "Microsoft_Mention": 17,
+    "Analysis_Ready": 14,
     "Government_Body": 24,
     "Fulltext_Status": 15,
     "Docx_File": 42,
@@ -73,7 +77,7 @@ def write_meta(meta, path):
 
 
 def update_fulltext_status(xlsx, results):
-    """Write Fulltext_Status/Docx_File from per-row corpus results."""
+    """Write full-text evidence, relevance flags, and publisher domain."""
     workbook = load_workbook(xlsx)
     ws = workbook.active
     headers = [cell.value for cell in ws[1]]
@@ -102,5 +106,24 @@ def update_fulltext_status(xlsx, results):
             status = "internal_error"
         _set_cell(ws, row_number, index["Fulltext_Status"] + 1, status)
         _set_cell(ws, row_number, index["Docx_File"] + 1, result.get("file", "") if ok else "")
+        _set_cell(
+            ws,
+            row_number,
+            index["Microsoft_Mention"] + 1,
+            result.get("microsoft_mention") or "unknown",
+        )
+        _set_cell(
+            ws,
+            row_number,
+            index["Analysis_Ready"] + 1,
+            result.get("analysis_ready") or "review",
+        )
+        domain_cell = ws.cell(row=row_number, column=index["Publisher_Domain"] + 1)
+        domain = (result.get("publisher_domain") or "").strip()
+        if domain and not domain_cell.value:
+            _set_cell(ws, row_number, index["Publisher_Domain"] + 1, domain)
+        effective = domain or str(domain_cell.value or "")
+        if source_type(effective) == "government":
+            _set_cell(ws, row_number, index["Source_Type"] + 1, "government")
     workbook.save(xlsx)
     return xlsx

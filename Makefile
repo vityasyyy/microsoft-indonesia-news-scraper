@@ -1,6 +1,10 @@
-.PHONY: corpus corpus-test corpus-merge corpus-zip help
+.PHONY: corpus corpus-test corpus-merge corpus-zip legacy help
 
 LIMIT ?= 5
+
+legacy: ## Fetch the frozen articles-2025-4 asset and import the 180-row list
+	./scripts/fetch_legacy.sh
+	uv run python -m src.import_legacy --input output/legacy/articles-2025-4.xlsx --out output/articles-2025.xlsx
 
 corpus: ## Full local corpus build (reads output/articles-2025.xlsx)
 	uv run python -m src.make_corpus

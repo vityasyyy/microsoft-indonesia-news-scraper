@@ -22,6 +22,9 @@ def xlsx_row(number, **over):
             "Date": "2025-03-10",
             "Keyword_Found": "k1",
             "Source_Lang": "id",
+            "Microsoft_Signal": "yes",
+            "Microsoft_Mention": "unknown",
+            "Analysis_Ready": "yes",
             "Fulltext_Status": "ok",
             "Docx_File": f"{number:03d}.docx",
         }
@@ -360,4 +363,59 @@ def test_gate_rejects_invalid_iso_date(tmp_path):
     rows = [xlsx_row(1, Date="2025-99-99")]
     paths = write_inputs(tmp_path, rows=rows)
     with pytest.raises(GateError, match="date"):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_accepts_legacy_no_signal_rows(tmp_path):
+    rows = [
+        xlsx_row(
+            1,
+            Microsoft_Signal="no",
+            Microsoft_Mention="no",
+            Analysis_Ready="no",
+        )
+    ]
+    paths = write_inputs(tmp_path, rows=rows)
+    assert release_gate.check(*paths, expected_batches=1) is True
+
+
+def test_gate_accepts_legacy_run_meta_without_fresh_query_fields(tmp_path):
+    paths = write_inputs(
+        tmp_path,
+        run_meta={
+            "run_utc": "2026-11-11T00:00:00+00:00",
+            "schema_version": 3,
+            "mode": "legacy",
+            "rows": 1,
+            "errors": [],
+        },
+    )
+    assert release_gate.check(*paths, expected_batches=1) is True
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "match"),
+    [
+        ("Microsoft_Signal", "maybe", "Microsoft_Signal"),
+        ("Microsoft_Mention", "sometimes", "Microsoft_Mention"),
+        ("Analysis_Ready", "done", "Analysis_Ready"),
+    ],
+)
+def test_gate_rejects_invalid_relevance_flags(tmp_path, column, value, match):
+    rows = [xlsx_row(1, **{column: value})]
+    paths = write_inputs(tmp_path, rows=rows)
+    with pytest.raises(GateError, match=match):
+        release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_legacy_run_meta_row_mismatch(tmp_path):
+    legacy_meta = {
+        "run_utc": "x",
+        "schema_version": 3,
+        "mode": "legacy",
+        "rows": 2,
+        "errors": [],
+    }
+    paths = write_inputs(tmp_path, run_meta=legacy_meta)
+    with pytest.raises(GateError, match="legacy run meta rows"):
         release_gate.check(*paths, expected_batches=1)

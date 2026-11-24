@@ -1,0 +1,102 @@
+name: legacy
+# WHEN THIS RUNS: manual only. Actions tab -> "legacy" -> "Run workflow".
+# Imports the frozen articles-2025-4 180-row list (no translation, no relevance
+# deletion), builds one docx corpus from all rows, gates it, and releases it.
+on:
+  workflow_dispatch: {} # manual button
+permissions:
+  contents: write
+concurrency:
+  group: legacy-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  legacy-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: ./scripts/fetch_legacy.sh
+      - name: Import legacy 180-row list
+        run: |
+          uv run python -m src.import_legacy \
+            --input output/legacy/articles-2025-4.xlsx \
+            --out output/articles-2025.xlsx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-output
+          path: output/
+  corpus:
+    needs: legacy-import
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        index: [0, 1, 2]
+    env:
+      BATCH_INDEX: ${{ matrix.index }}
+      BATCH_COUNT: 3
+      CORPUS_WORKERS: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: legacy-output
+          path: output/
+      - name: Build legacy corpus batch ${{ matrix.index }}
+        run: uv run python -m src.make_corpus
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-batch-${{ matrix.index }}
+          path: corpus-batch-${{ matrix.index }}/
+  publish:
+    needs: corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: legacy-output
+          path: output/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: legacy-batch-*
+          path: batches/
+      - name: Merge legacy corpus batches
+        run: |
+          mapfile -t BATCH_DIRS < <(find batches -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ ${#BATCH_DIRS[@]} -eq 0 ]; then echo "no legacy batch artifacts"; exit 1; fi
+          uv run python -m src.merge_corpus \
+            --batches "${BATCH_DIRS[@]}" \
+            --out corpus \
+            --xlsx output/articles-2025.xlsx \
+            --expected-batches 3
+      - name: Release gate
+        run: |
+          uv run python -m src.release_gate \
+            --xlsx output/articles-2025.xlsx \
+            --run-meta output/run-meta.json \
+            --corpus-meta corpus/corpus-meta.json \
+            --expected-batches 3
+      - run: ./scripts/zip_corpus.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-corpus
+          path: corpus/
+      - name: Release legacy xlsx + corpus + run meta
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: articles-2025-legacy-${{ github.run_number }}
+          files: |
+            output/articles-2025.xlsx
+            output/run-meta.json
+            corpus-articles-2025.zip

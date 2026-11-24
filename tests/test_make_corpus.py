@@ -25,6 +25,9 @@ def xlsx_row(number, **over):
             "Date": "2025-03-10",
             "Keyword_Found": "k1",
             "Source_Lang": "id",
+            "Microsoft_Signal": "yes",
+            "Microsoft_Mention": "unknown",
+            "Analysis_Ready": "yes",
             "Fulltext_Status": "pending",
         }
     )
@@ -43,7 +46,7 @@ def test_slugify_rules():
     assert len(make_corpus.slugify("x" * 100, "a")) == 60
 
 
-def test_read_rows_uses_schema_v2(tmp_path):
+def test_read_rows_uses_schema_v3(tmp_path):
     path = tmp_path / "articles.xlsx"
     write_xlsx(path, count=2)
     rows = make_corpus.read_rows(str(path))
@@ -51,6 +54,9 @@ def test_read_rows_uses_schema_v2(tmp_path):
     assert rows[0]["Title"] == "Microsoft artikel 1"
     assert rows[0]["Publisher"] == "Kompas"
     assert rows[0]["Source_Lang"] == "id"
+    assert rows[0]["Microsoft_Signal"] == "yes"
+    assert rows[0]["Microsoft_Mention"] == "unknown"
+    assert rows[0]["Analysis_Ready"] == "yes"
 
 
 def test_read_rows_rejects_v1_headers(tmp_path):
@@ -382,3 +388,110 @@ def test_batch_run_uses_deterministic_slice(tmp_path, monkeypatch):
         row[schema.COLUMNS.index("Fulltext_Status")] for row in ws.iter_rows(min_row=2, values_only=True)
     ]
     assert statuses == ["pending"] * 5
+
+
+def test_signal_yes_fetch_failure_stays_analysis_ready(monkeypatch, tmp_path):
+    row = xlsx_row(1, Microsoft_Signal="yes")
+    monkeypatch.setattr(
+        make_corpus.downloader,
+        "fetch",
+        lambda url: {"ok": False, "reason": "blocked", "stage": "fetch", "resolved_url": "https://k.com/1"},
+    )
+    result = make_corpus.process_row(row, str(tmp_path))
+    assert result["status"] == "failed"
+    assert result["microsoft_mention"] == "unknown"
+    assert result["analysis_ready"] == "yes"
+
+
+def test_signal_no_with_body_mention_is_analysis_ready(monkeypatch, tmp_path):
+    row = xlsx_row(1, Title="Pusat data nasional", Microsoft_Signal="no")
+    monkeypatch.setattr(
+        make_corpus.downloader,
+        "fetch",
+        lambda url: {
+            "ok": True,
+            "text": "Microsoft membangun pusat data di Indonesia. " * 20,
+            "reason": "",
+            "stage": "trafilatura",
+            "resolved_url": "https://k.com/1",
+        },
+    )
+    result = make_corpus.process_row(row, str(tmp_path))
+    assert result["microsoft_mention"] == "yes"
+    assert result["analysis_ready"] == "yes"
+
+
+def test_signal_no_without_body_mention_is_not_analysis_ready(monkeypatch, tmp_path):
+    row = xlsx_row(1, Title="Pusat data nasional", Microsoft_Signal="no")
+    monkeypatch.setattr(
+        make_corpus.downloader,
+        "fetch",
+        lambda url: {
+            "ok": True,
+            "text": "Pertumbuhan ekonomi Indonesia tetap kuat tahun ini. " * 20,
+            "reason": "",
+            "stage": "trafilatura",
+            "resolved_url": "https://k.com/1",
+        },
+    )
+    result = make_corpus.process_row(row, str(tmp_path))
+    assert result["microsoft_mention"] == "no"
+    assert result["analysis_ready"] == "no"
+
+
+def test_signal_no_fetch_failure_needs_review(monkeypatch, tmp_path):
+    row = xlsx_row(1, Title="Pusat data nasional", Microsoft_Signal="no")
+    monkeypatch.setattr(
+        make_corpus.downloader,
+        "fetch",
+        lambda url: {"ok": False, "reason": "blocked", "stage": "fetch", "resolved_url": ""},
+    )
+    result = make_corpus.process_row(row, str(tmp_path))
+    assert result["microsoft_mention"] == "unknown"
+    assert result["analysis_ready"] == "review"
+
+
+def test_process_row_records_publisher_domain_and_quality_flags_in_docx(monkeypatch, tmp_path):
+    row = xlsx_row(1, Microsoft_Signal="yes")
+    monkeypatch.setattr(
+        make_corpus.downloader,
+        "fetch",
+        lambda url: {
+            "ok": True,
+            "text": "Microsoft membangun pusat data di Indonesia. " * 20,
+            "reason": "",
+            "stage": "trafilatura",
+            "resolved_url": "https://www.kompas.com/artikel",
+        },
+    )
+    result = make_corpus.process_row(row, str(tmp_path))
+    assert result["publisher_domain"] == "www.kompas.com"
+    texts = [paragraph.text for paragraph in Document(str(tmp_path / result["file"])).paragraphs]
+    assert any("Microsoft mention: yes" in text for text in texts)
+    assert any("Analysis ready: yes" in text for text in texts)
+
+
+def test_build_meta_includes_mention_and_analysis_counts(tmp_path):
+    xlsx = tmp_path / "articles.xlsx"
+    xlsx.write_bytes(b"abc")
+    config = {
+        "xlsx": str(xlsx),
+        "batch_index": 0,
+        "batch_count": 1,
+        "workers": 4,
+        "out_dir": "corpus",
+        "preview": False,
+    }
+    results = [
+        {"No": 1, "status": "ok", "file": "001.docx", "microsoft_mention": "yes", "analysis_ready": "yes"},
+        {"No": 2, "status": "ok", "file": "002.docx", "microsoft_mention": "no", "analysis_ready": "no"},
+        {"No": 3, "status": "failed", "reason": "blocked", "microsoft_mention": "unknown", "analysis_ready": "review"},
+    ]
+    meta = make_corpus.build_meta(config, results)
+    assert meta["microsoft_mention_yes"] == 1
+    assert meta["microsoft_mention_no"] == 1
+    assert meta["microsoft_mention_unknown"] == 1
+    assert meta["analysis_ready_yes"] == 1
+    assert meta["analysis_ready_no"] == 1
+    assert meta["analysis_ready_review"] == 1
+    assert meta["results"][0]["analysis_ready"] == "yes"

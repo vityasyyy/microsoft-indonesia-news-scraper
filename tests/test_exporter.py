@@ -19,6 +19,9 @@ def row(**over):
         "Keyword_Found": "k1",
         "Also_Found_In": [],
         "Source_Lang": "id",
+        "Microsoft_Signal": "yes",
+        "Microsoft_Mention": "unknown",
+        "Analysis_Ready": "yes",
         "Government_Body": "",
         "Fulltext_Status": "pending",
         "Docx_File": "",
@@ -27,7 +30,7 @@ def row(**over):
     return base
 
 
-def test_export_creates_xlsx_with_schema_v2_headers(tmp_path):
+def test_export_creates_xlsx_with_schema_v3_headers(tmp_path):
     p = str(tmp_path / "out.xlsx")
     exporter.export_xlsx([row()], p)
     ws = load_workbook(p).active
@@ -92,3 +95,71 @@ def test_unknown_reason_becomes_internal_error(tmp_path):
     ws = load_workbook(p).active
     idx = {h: i for i, h in enumerate(schema.COLUMNS)}
     assert ws.cell(row=2, column=idx["Fulltext_Status"] + 1).value == "internal_error"
+
+
+def test_update_fulltext_status_writes_mention_and_analysis_columns(tmp_path):
+    p = str(tmp_path / "out.xlsx")
+    exporter.export_xlsx([row(No=1)], p)
+    exporter.update_fulltext_status(
+        p,
+        [
+            {
+                "No": 1,
+                "status": "ok",
+                "file": "001_kompas_judul.docx",
+                "microsoft_mention": "yes",
+                "analysis_ready": "yes",
+            }
+        ],
+    )
+    ws = load_workbook(p).active
+    idx = {h: i for i, h in enumerate(schema.COLUMNS)}
+    values = [c.value for c in ws[2]]
+    assert values[idx["Microsoft_Mention"]] == "yes"
+    assert values[idx["Analysis_Ready"]] == "yes"
+
+
+def test_update_fulltext_status_fills_domain_and_upgrades_go_id_source_type(tmp_path):
+    p = str(tmp_path / "out.xlsx")
+    exporter.export_xlsx([row(No=1, Publisher_Domain="", Source_Type="other")], p)
+    exporter.update_fulltext_status(
+        p,
+        [
+            {
+                "No": 1,
+                "status": "ok",
+                "file": "001.docx",
+                "publisher_domain": "komdigi.go.id",
+                "microsoft_mention": "no",
+                "analysis_ready": "no",
+            }
+        ],
+    )
+    ws = load_workbook(p).active
+    idx = {h: i for i, h in enumerate(schema.COLUMNS)}
+    values = [c.value for c in ws[2]]
+    assert values[idx["Publisher_Domain"]] == "komdigi.go.id"
+    assert values[idx["Source_Type"]] == "government"
+    assert values[idx["Microsoft_Mention"]] == "no"
+    assert values[idx["Analysis_Ready"]] == "no"
+
+
+def test_update_fulltext_status_keeps_existing_domain(tmp_path):
+    p = str(tmp_path / "out.xlsx")
+    exporter.export_xlsx([row(No=1, Publisher_Domain="kompas.com")], p)
+    exporter.update_fulltext_status(
+        p,
+        [
+            {
+                "No": 1,
+                "status": "ok",
+                "file": "001.docx",
+                "publisher_domain": "other.example",
+                "microsoft_mention": "unknown",
+                "analysis_ready": "review",
+            }
+        ],
+    )
+    ws = load_workbook(p).active
+    idx = {h: i for i, h in enumerate(schema.COLUMNS)}
+    assert ws.cell(row=2, column=idx["Publisher_Domain"] + 1).value == "kompas.com"
