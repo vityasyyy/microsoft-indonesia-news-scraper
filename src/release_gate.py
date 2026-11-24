@@ -111,7 +111,14 @@ def check(xlsx, run_meta, corpus_meta, expected_batches=None):
         elif docx:
             raise GateError(f"row {number} is {status} but has Docx_File: {docx}")
 
-    _read_run_meta(run_meta)
+    run = _read_run_meta(run_meta)
+    if run.get("mode") == "legacy":
+        try:
+            run_rows = int(run.get("rows", -1))
+        except (TypeError, ValueError) as error:
+            raise GateError(f"legacy run meta has invalid rows: {run.get('rows')!r}") from error
+        if run_rows != len(rows):
+            raise GateError(f"legacy run meta rows {run_rows} != xlsx rows {len(rows)}")
     corpus = _read_meta(corpus_meta, REQUIRED_CORPUS_META)
     batch_count = int(corpus.get("batch_count", 0))
     if expected_batches is not None and batch_count != expected_batches:

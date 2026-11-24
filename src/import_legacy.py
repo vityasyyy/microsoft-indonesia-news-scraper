@@ -3,6 +3,7 @@ import argparse
 import datetime
 import hashlib
 import pathlib
+import zipfile
 
 import openpyxl
 
@@ -11,6 +12,7 @@ from src.language import clean_html
 from src.schema import SCHEMA_VERSION
 
 EXPECTED_ROWS = 180
+EXPECTED_SOURCE_SHA256 = "1a7bb86ae68043567f997fac08f32b891ecdbefc270d488ed2b0c2840c6f5bc5"
 SOURCE_RELEASE = "articles-2025-4"
 SOURCE_ASSET_URL = (
     "https://github.com/vityasyyy/microsoft-indonesia-news-scraper/releases/download/"
@@ -32,7 +34,6 @@ REQUIRED_OLD_HEADERS = (
 SOURCE_LANGS = ("id", "en", "other", "unknown")
 INPUT_DEFAULT = "output/legacy/articles-2025-4.xlsx"
 OUT_DEFAULT = "output/articles-2025.xlsx"
-META_DEFAULT = "output/run-meta.json"
 
 
 class LegacyImportError(ValueError):
@@ -86,11 +87,15 @@ def convert_rows(headers, records):
     index = {name: position for position, name in enumerate(headers)}
     rows = []
     for record in records:
+        number = record[index["No"]]
         publisher = _text(record[index["Publisher"]])
-        title = _text(record[index["Title_Original"]]) or _text(record[index["Title_ID"]])
-        snippet = clean_html(
-            _text(record[index["Snippet_Original"]]) or _text(record[index["Snippet_ID"]])
-        )
+        title = _text(record[index["Title_Original"]])
+        if not title:
+            raise LegacyImportError(
+                f"legacy row {number} has no Title_Original; "
+                "refusing to import a translated fallback"
+            )
+        snippet = clean_html(_text(record[index["Snippet_Original"]]))
         source_lang = _text(record[index["Source_Lang"]]).lower()
         if source_lang not in SOURCE_LANGS:
             source_lang = "unknown"
@@ -149,12 +154,20 @@ def build_meta(rows, source_path):
     }
 
 
-def import_file(input_path, out_path, meta_path, expected_rows=EXPECTED_ROWS):
+def import_file(
+    input_path, out_path, meta_path, expected_rows=EXPECTED_ROWS, expected_sha256=None
+):
     source = pathlib.Path(input_path)
     if not source.is_file():
         raise LegacyImportError(
             f"missing legacy asset {source}: run ./scripts/fetch_legacy.sh first"
         )
+    if expected_sha256:
+        actual = sha256_file(str(source))
+        if actual != expected_sha256:
+            raise LegacyImportError(
+                f"legacy asset sha256 mismatch: expected {expected_sha256}, got {actual}"
+            )
     headers, records = read_old_rows(str(source), expected_rows)
     rows = convert_rows(headers, records)
     pathlib.Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -171,10 +184,20 @@ def main(argv=None):
     )
     parser.add_argument("--input", default=INPUT_DEFAULT)
     parser.add_argument("--out", default=OUT_DEFAULT)
+    parser.add_argument("--meta", default=None)
+    parser.add_argument("--expected-sha256", default=EXPECTED_SOURCE_SHA256)
     args = parser.parse_args(argv)
+    meta_path = args.meta or str(pathlib.Path(args.out).with_name("run-meta.json"))
     try:
-        meta = import_file(args.input, args.out, META_DEFAULT)
-    except (LegacyImportError, OSError, openpyxl.utils.exceptions.InvalidFileException) as error:
+        meta = import_file(
+            args.input, args.out, meta_path, expected_sha256=args.expected_sha256
+        )
+    except (
+        LegacyImportError,
+        OSError,
+        zipfile.BadZipFile,
+        openpyxl.utils.exceptions.InvalidFileException,
+    ) as error:
         print(error)
         return 1
     print(

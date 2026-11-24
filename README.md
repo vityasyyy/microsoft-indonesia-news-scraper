@@ -51,7 +51,7 @@ The earlier `articles-2025-4` release froze the original recall-first sample. Th
 
 - **Exact source:** [`articles-2025-4/articles-2025.xlsx`](https://github.com/vityasyyy/microsoft-indonesia-news-scraper/releases/download/articles-2025-4/articles-2025.xlsx) (sha256 recorded in `output/run-meta.json`).
 - **Rows:** 180, no relevance deletion. The title/snippet check gives **91 signal = yes** and **89 signal = no**.
-- **No translation:** `Title` comes from `Title_Original` (falling back to `Title_ID`), `Snippet` from `Snippet_Original` (HTML-cleaned), and `Source_Lang` is preserved: 113 `id`, 65 `en`, 2 `unknown`.
+- **No translation:** `Title` comes from `Title_Original`, `Snippet` from `Snippet_Original` (HTML-cleaned), and `Source_Lang` is preserved: 113 `id`, 65 `en`, 2 `unknown`. The import fails on a blank original title rather than falling back to the translated column.
 - **Explicit analysis labels:**
   - `Microsoft_Signal` = `yes`/`no` for a Microsoft signal in the title+snippet.
   - `Microsoft_Mention` = `yes`/`no`/`unknown` for the corpus full text; `unknown` when the fetch failed.
@@ -114,7 +114,7 @@ Each Release is a complete, self-contained run. Schema v3 releases contain only 
 ## For developers
 
 - Set up and run: `uv sync --frozen && uv run python -m src.scrape` → `output/` (`articles-2025.xlsx` + `run-meta.json`).
-- Tests: `uv run pytest -q` (166 tests).
+- Tests: `uv run pytest -q` (169 tests).
 - Legacy 180 list: `make legacy` fetches the exact `articles-2025-4` asset and imports it to `output/articles-2025.xlsx`; then `make corpus`. Direct form: `./scripts/fetch_legacy.sh && uv run python -m src.import_legacy --input output/legacy/articles-2025-4.xlsx --out output/articles-2025.xlsx`.
 - Corpus locally: `make corpus` (full), `make corpus-test LIMIT=5` (preview), `make corpus-merge`, `make corpus-zip`.
 - Batched corpus (as CI runs it): `BATCH_INDEX=1 BATCH_COUNT=3 CORPUS_WORKERS=4 uv run python -m src.make_corpus`, then `uv run python -m src.merge_corpus --batches corpus-batch-0 corpus-batch-1 corpus-batch-2 --out corpus --expected-batches 3`.

@@ -406,3 +406,16 @@ def test_gate_rejects_invalid_relevance_flags(tmp_path, column, value, match):
     paths = write_inputs(tmp_path, rows=rows)
     with pytest.raises(GateError, match=match):
         release_gate.check(*paths, expected_batches=1)
+
+
+def test_gate_rejects_legacy_run_meta_row_mismatch(tmp_path):
+    legacy_meta = {
+        "run_utc": "x",
+        "schema_version": 3,
+        "mode": "legacy",
+        "rows": 2,
+        "errors": [],
+    }
+    paths = write_inputs(tmp_path, run_meta=legacy_meta)
+    with pytest.raises(GateError, match="legacy run meta rows"):
+        release_gate.check(*paths, expected_batches=1)

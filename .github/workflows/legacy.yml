@@ -73,10 +73,10 @@ jobs:
           path: batches/
       - name: Merge legacy corpus batches
         run: |
-          BATCH_DIRS=$(find batches -mindepth 1 -maxdepth 1 -type d | sort)
-          if [ -z "$BATCH_DIRS" ]; then echo "no legacy batch artifacts"; exit 1; fi
+          mapfile -t BATCH_DIRS < <(find batches -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ ${#BATCH_DIRS[@]} -eq 0 ]; then echo "no legacy batch artifacts"; exit 1; fi
           uv run python -m src.merge_corpus \
-            --batches $BATCH_DIRS \
+            --batches "${BATCH_DIRS[@]}" \
             --out corpus \
             --xlsx output/articles-2025.xlsx \
             --expected-batches 3

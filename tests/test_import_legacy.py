@@ -42,7 +42,7 @@ def write_legacy(path, count=180, headers=None):
                 number,
                 publisher,
                 title_id,
-                "" if number == 3 else title_original,
+                title_original,
                 f"https://news.google.com/rss/articles/{number}",
                 f"2025-{((number - 1) % 12) + 1:02d}-10",
                 "investasi microsoft di Indonesia tahun 2025",
@@ -95,7 +95,7 @@ def test_import_maps_old_columns_and_keeps_all_rows(tmp_path):
     assert second[index["Also_Found_In"]] is None
     assert second[index["Microsoft_Signal"]] == "yes"
     assert second[index["Analysis_Ready"]] == "yes"
-    assert rows[2][index["Title"]] == "Terjemahan 3"
+    assert rows[2][index["Title"]] == "Harga emas naik 3"
     assert rows[3][index["Source_Lang"]] == "unknown"
     assert rows[4][index["Also_Found_In"]] == "Microsoft elevAIte di Indonesia 2025"
 
@@ -150,9 +150,36 @@ def test_import_cli_defaults_and_exit_code(tmp_path, monkeypatch):
                 str(source),
                 "--out",
                 str(tmp_path / "output" / "articles-2025.xlsx"),
+                "--expected-sha256",
+                hashlib.sha256(source.read_bytes()).hexdigest(),
             ]
         )
         == 0
     )
     assert (tmp_path / "output" / "articles-2025.xlsx").exists()
     assert (tmp_path / "output" / "run-meta.json").exists()
+
+
+def test_import_rejects_blank_original_title(tmp_path):
+    source = write_legacy(tmp_path / "blank.xlsx", count=180)
+    workbook = openpyxl.load_workbook(source)
+    ws = workbook.active
+    headers = [cell.value for cell in ws[1]]
+    index = {name: position for position, name in enumerate(headers)}
+    ws.cell(row=2, column=index["Title_Original"] + 1).value = None
+    workbook.save(source)
+    with pytest.raises(import_legacy.LegacyImportError, match="Title_Original"):
+        import_legacy.import_file(
+            str(source), str(tmp_path / "out.xlsx"), str(tmp_path / "meta.json")
+        )
+
+
+def test_import_rejects_wrong_asset_hash(tmp_path):
+    source = write_legacy(tmp_path / "articles-2025-4.xlsx")
+    with pytest.raises(import_legacy.LegacyImportError, match="sha256"):
+        import_legacy.import_file(
+            str(source),
+            str(tmp_path / "out.xlsx"),
+            str(tmp_path / "meta.json"),
+            expected_sha256="0" * 64,
+        )
